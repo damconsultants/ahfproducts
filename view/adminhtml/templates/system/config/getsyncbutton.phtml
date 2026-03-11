@@ -1,0 +1,99 @@
+<div class="pp-buttons-container">
+    <?= $block->getButtonHtml(); ?>
+</div>
+<script>
+    require([
+        'jquery',
+        'prototype'
+    ], function ($) {
+
+        var checkbox_checked = 0;
+        var sku_limit = 0;
+        $("#bt_id_3").hide();
+        $('input[type="checkbox"]').change(function () {
+            if ($(this).is(':checked')) {
+                $("#row_byndersyncdata_bynder_sync_data_sku_limit").hide();
+                checkbox_checked = 1;
+
+                // Check if the button already exists to avoid duplication
+
+                $("#bt_id_3").show();
+
+                $("#bt_id_1").hide();
+            } else {
+                $("#row_byndersyncdata_bynder_sync_data_sku_limit").show();
+                checkbox_checked = 0;
+                $("#bt_id_3").hide();
+
+                $("#bt_id_1").show();
+
+                // Remove the button when unchecked
+            }
+        });
+
+        $('#bt_id_2').click(function () {
+            var product_sku = $('textarea#byndersyncdata_bynder_sync_data_sku').val();
+            var select_attribute = $('select#byndersyncdata_bynder_sync_data_select').val();
+            if (checkbox_checked == 0) {
+                sku_limit = $('#byndersyncdata_bynder_sync_data_sku_limit').val();
+            } else {
+                sku_limit = 0;
+            }
+
+
+            var params = {
+                product_sku: product_sku,
+                select_attribute: select_attribute,
+                sku_limit: sku_limit
+            };
+            new Ajax.Request('<?= $block->escapeUrl($block->getAjaxUrl()); ?>', {
+                parameters: params,
+                loaderArea: true,
+                asynchronous: true,
+
+                beforeSend: function () {
+                    $('body').trigger('processStart');
+                },
+                onSuccess: function (transport) {
+                    var response = JSON.parse(transport.responseText);
+					console.log("response ", response);
+                    var resultText = '';
+                    if (response.status == 1) {
+                        resultText = response.message
+                        var skuArray = resultText.split(',').map(sku => sku.trim()).filter(sku => sku !== '');
+						
+                        console.log("Total SKUs:", skuArray.length);
+                        console.log("SKUs:", skuArray);
+                        if (skuArray.length <= 20) {
+                            console.log("hello");
+                            $("#bt_id_3").hide();
+                            $("#bt_id_1").show();
+                        } else {
+                            $("#bt_id_3").show();
+                            $("#bt_id_1").hide();
+                            console.log("demo");
+                            
+                        }
+                        $('#byndersyncdata_bynder_sync_data_sku').val(resultText);
+                        $(".success-msg-sync").show();
+                        $(".error-msg-sync").hide();
+                        $(".success-msg-sync").html("Sku Get Successfully...!");
+                        setTimeout(function () {
+                            $('.success-msg-sync').delay(5000).fadeOut('slow');
+                        }, 5000);
+                    } else {
+                        resultText = transport.statusText;
+                        $('#byndersyncdata_bynder_sync_data_sku').val('');
+                        $(".success-msg-sync").hide();
+                        $(".error-msg-sync").show();
+                        $(".error-msg-sync").html("There is not any empty Bynder Data in product.");
+                        setTimeout(function () {
+                            $('.error-msg-sync').delay(5000).fadeOut('slow');
+                        }, 5000);
+                    }
+
+                }
+            });
+        });
+    });
+</script>

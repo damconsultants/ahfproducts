@@ -1,0 +1,55 @@
+<?= $block->getButtonHtml(); ?>
+<div id="autoAddDataProduct" style="display:none;">
+    <b><h3>Once any bynder user/member add the sku in selected meta propety so those assest (items) automatically sync to magento using this cron job.</h3></b>
+</div>
+<div id="autoReplaceDataProduct" style="display:none;">
+    <b><h3>Once any bynder user/members remove sku from selected meta properties that will be update to magento as well.</h3></b>
+</div>
+<div id="featchNullSKUToMagento" style="display:none;">
+    <b><h3>Using this cron job, we are fetching all images from Ahfproducts which does not have any single images into magento product.</h3></b>
+</div>
+<div id="DeleteDataProduct" style="display:none;">
+    <b><h3>Using this cron job, we are fetching all images from Ahfproducts which does not have any single images into magento product.</h3></b>
+</div>
+<script>
+    require(
+        [
+            'jquery',
+            'Magento_Ui/js/modal/modal'
+        ],
+        function(
+            $,
+            modal
+        ) {
+            var options = {
+                type: 'popup',
+                responsive: true,
+                innerScroll: true,
+                title: 'Description',
+                buttons: [{
+                    text: $.mage.__('OK'),
+                    class: '',
+                    click: function () {
+                        this.closeModal();
+                    }
+                }]
+            };
+
+            var popup = modal(options, $('#autoAddDataProduct'));
+            window.AutoAddDataProduct = function() {
+                $('#autoAddDataProduct').modal('openModal');
+            };
+            
+            var popup = modal(options, $('#DeleteDataProduct'));
+            window.DeleteDataProduct = function() {
+                $('#DeleteDataProduct').modal('openModal');
+            };
+            
+            var popup = modal(options, $('#featchNullSKUToMagento'));
+            window.FeatchNullSKUToMagento = function() {
+                $('#featchNullSKUToMagento').modal('openModal');
+            };
+            
+        }  
+    );
+</script>

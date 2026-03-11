@@ -1,0 +1,1078 @@
+<?php
+$entity_id = $block->getEntityId();
+if (isset($entity_id) && !empty($entity_id)) {
+    $entity_id = $block->getEntityId();
+} else {
+    $entity_id = 0;
+}
+$currentProduct = "current_product";
+//$helper = $this->helper("DamConsultants\Ahfproducts\Helper\Data");
+$magentoImageRoll = $block->getBulkImageRoll();
+$product = $block->getProduct($currentProduct);
+$product_id = $product->getId();
+$sku = $product->getSku();
+$bynder_image = $product->getBynderMultiImg();
+$attr = [];
+$all_magento_roles = [];
+$configuration_domain = $block->getBynderDomain();
+foreach ($magentoImageRoll as $attribute) {
+    $front_label = $attribute->getFrontendLabel();
+    $attr[] = [
+        'code' => $front_label,
+        'label' => $front_label
+    ];
+    $all_magento_roles[] = $front_label;
+}
+$get_base_url = $block->getBaseUrl();
+
+?>
+
+<style>
+    .success-msg-sync,
+    .error-msg-sync {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 3px 3px 3px 3px;
+    }
+
+    .success-msg-sync {
+        color: #270;
+        background-color: #DFF2BF;
+    }
+
+    .error-msg-sync {
+        color: #D8000C;
+        background-color: #FFBABA;
+    }
+
+    table{
+        display: table;
+        border-collapse: separate;
+        box-sizing: border-box;
+        text-indent: initial;
+        border-spacing: 2px;
+        border-color: grey;
+    }
+    .dynamic-row th{
+        color: #303030;
+        font-size: 1.4rem;
+        font-weight: 600;
+        background-color: #efefef;
+        border: 0;
+        border-bottom: 1px solid #fff;
+        padding: 16px;
+        text-align: left;
+        vertical-align: top;
+    }
+    .admin__control-textarea{
+        height: 135px;
+    }
+    tr {
+        display: table-row;
+        vertical-align: inherit;
+        border-color: inherit;
+    }
+    td, th {
+        padding: 16px;
+        width: 500px;
+    }
+    .url{
+        background-color: #fff;
+        border: 1px solid #adadad;
+        border-radius: 1px;
+        box-shadow: none;
+        color: #303030;
+        font-size: 1.4rem;
+        font-weight: 400;
+        height: 40px;
+        line-height: 1.36;
+        padding: 5px !important;
+        transition: border-color .1s linear;
+        vertical-align: baseline;
+        width: 100%;
+
+    }
+    #external_image{
+        background-color: #eb5202;
+        border-color: #eb5202;
+        color: #ffffff;
+        text-shadow: 1px 1px 0 rgb(0 0 0 / 25%);
+    }
+</style>
+<div class="success-msg-sync" style="display:none;"></div>
+<div class="error-msg-sync" style="display:none;"></div>
+<div class="row">
+    <div class="add-video-button-container">
+        <button type="button" name="external_image" id="external_image">AHF Image</button>
+        <button type="button" name="import_image_bynder"
+        id="import_image_bynder" class="action-secondary"
+        style="float:left;">Import Image</button>
+    </div>
+</div>
+
+<table class="dynamic-rows" id="sortable">
+    <thead>
+        <tr style="background: #efefef;">
+            <th>
+            </th>
+            <th>
+                <span>AHF CND URL</span>
+            </th>
+            <th>
+                <span>Alt text</span>
+            </th>
+            <th>
+                <span>Image Role</span>
+            </th>
+            <th>
+                <span>Image Url</span>
+            </th>
+            <th>
+                <span>Action</span>
+            </th>
+        </tr>
+    </thead>
+    <tbody class="tbody_dynamic"></tbody>
+</table>
+
+<div id="popup-modal" style="display:none;">
+    <div id="compactViewContainer"></div>
+</div>
+<input type="hidden" id="p_eid" value="<?= $block->escapeHtml($entity_id); ?>">
+<input type="hidden" id="ajax_baseurl" value="<?= $block->escapeUrl($get_base_url . 'bynder/index'); ?>">
+<input type="hidden" id="meta_baseurl" value="<?= $block->escapeUrl($get_base_url . 'bynder/bynderchanges/index'); ?>">
+
+<input type="hidden" id="form_keys" value="<?= $block->escapeHtml($block->getFormKey()); ?>">
+
+<script>
+    var drag_img = "<?= $block->escapeHtml($block->getDrag()); ?>";
+    var delete_icon = "<?= $block->escapeHtml($block->getDelete()); ?>";
+    var attr = <?= /* @noEscape */ $block->getJson($attr); ?>;
+    var all_mg_roles = <?= /* @noEscape */ $block->getJson($all_magento_roles) ?>;
+    var img_details_old = []; 
+    var past_bynder_image_videos=[];
+    var past_item_array = [];
+    var past_item_role_array = [];
+    var import_image_url = '<?= $block->escapeUrl($block->getAjaxImportUrl()) ?>';
+    var add_temp_data = '<?= $block->escapeUrl($block->getAjaxUrl()) ?>';
+    var configuration_domain = '<?= $block->escapeHtml($configuration_domain); ?>';
+    var cur_product_id = '<?= $block->escapeHtml($product_id); ?>';
+    var cur_sku = "<?= $block->escapeHtml($sku); ?>";
+    var bynder_img_n = '<?= $block->escapeHtml($bynder_image); ?>';
+    
+    jQuery(document).ready(function(){
+        jQuery("#import_image_bynder").appendTo(
+                jQuery('.product_form_product_form_bynder_url_modal').find('div .page-actions')
+            );
+    });
+    jQuery(document).on('click','.bynder_url button',function(){
+        var old_selected_bynder_images = [];
+        var img_details = [];
+        past_item_array = [];
+        past_item_role_array = [];
+        /** extract old video format for new format */
+        var old_bynder_video = jQuery('textarea[name="product[bynder_videos]"]').val();
+        if(old_bynder_video)
+        {
+            if(old_bynder_video.trim() != ""){
+                var total_old_format_video = old_bynder_video.split(" \n");
+                if(total_old_format_video.length > 0){
+                  
+                    jQuery.each(total_old_format_video,function(kk,val){
+                        if(val.trim() != ""){
+                            var old_item_extract = val.split("@@");
+                           
+                            var extract_video_url = old_item_extract[0].split("?");
+
+                            var item_url = extract_video_url[0];
+                            var thum_url = old_item_extract[1];
+
+                            var video_details = {
+                                "item_url": item_url.trim(),
+                                "image_role": [],
+                                "item_type" : 'VIDEO',
+                                "thum_url" : thum_url.trim()
+                            };
+                            old_selected_bynder_images.push(video_details);
+                        }
+                    });
+                }
+            }
+        }
+        /** extract old image format for new format */
+        var old_bynder_image = jQuery('textarea[name="product[bynder_multi_img]"]').val();
+        
+        if(old_bynder_image.trim() != ""){
+            past_bynder_image_videos = jQuery('textarea[name="product[bynder_multi_img]"]').val();
+            const old_img_obj = JSON.parse(past_bynder_image_videos);
+            jQuery.each(old_img_obj,function(kk,val){
+                
+                var item_url_new = "";
+                var imag_url_val = val.item_url;
+                var aws_word = "X-Amz-SignedHeaders";
+                var search_result = imag_url_val.indexOf(aws_word);
+
+                if(search_result > -1){
+                    image_url_explode1 = imag_url_val.split("?");
+                    item_url_new = image_url_explode1[0];
+                }else{
+                    item_url_new = val.item_url;
+                }
+
+                past_item_array.push(item_url_new);
+                past_item_role_array.push(val.image_role);
+            });
+            
+            var total_old_format_image = old_bynder_image.split(" \n");
+            
+            if(total_old_format_image.length > 0){
+                jQuery.each(total_old_format_image,function(kk,val){
+                    if(val.trim() != ""){
+                        var images_details = {
+                            "item_url": val.trim(),
+                            "image_role": [],
+                            "item_type" : 'IMAGE',
+                            "thum_url" : val.trim()
+                        };
+                        
+                        old_selected_bynder_images.push(images_details);
+                    }
+                });
+            }    
+        }
+     
+
+        var old_selected_images = jQuery('textarea[name="product[bynder_multi_img]"]').val();
+        
+        if(old_selected_images.trim() != "" || old_bynder_video.trim() != ""){
+            if(((x)=>{try{JSON.parse(x);return true;}catch(e){return false}})(old_selected_images))
+            {
+            }else{
+                old_selected_images = JSON.stringify(old_selected_bynder_images);
+            }
+            set_selected_images(old_selected_images);
+        }else{
+            jQuery('.dynamic-rows').find('.tbody_dynamic').html("");
+        }
+    });
+    function set_selected_images(old_selected_images,){
+        var selected_images = JSON.parse(old_selected_images);
+        var item_length = selected_images.length;
+        var content = '';
+        selected_images.sort(function(a, b) {
+			return a.is_order - b.is_order;
+		});
+        jQuery.each(selected_images, function( i, img_data ){
+
+            var selected_role = img_data.image_role;
+            var select_item_type = img_data.item_type;
+			var is_order = img_data.is_order
+            var bynder_media_id = "";
+            if(typeof img_data.bynder_md_id != "undefined"){
+                bynder_media_id = img_data.bynder_md_id;
+            }
+
+            var old_img_altText = img_data.alt_text;
+			var old_img_altText_new = "";
+			if(img_data.item_type == 'IMAGE') {
+				old_img_altText_new = old_img_altText.replace(/"/g, '');
+			} 
+            if(typeof old_img_altText == "undefined"){
+                old_img_altText = "";
+            }
+
+            var item_thum_url = img_data.thum_url;
+            var original_item_url = img_data.item_url;
+            var check_is_imported = img_data.is_import;
+            var check_is_order = img_data.is_order;
+            content += '<tr style="background: #efefef;"><td>'
+            content += '<img src ="'+drag_img+'"/></td><td>'
+            content += '<input class="url bynder_selected_images" type="text"'+
+                        'data-bynderid="'+bynder_media_id+'"'+
+                        'data-isimport="'+check_is_imported+'"'+
+						'data-isorder="'+check_is_order+'"'+
+                        'data-index="'+i+'" id="textboxId_'+i+'" data-imgType="'+select_item_type+'"'+
+                        'data-thumUrl="'+item_thum_url+'" value="'+original_item_url+'" />'
+            content += '</td>'
+
+            if(select_item_type == "IMAGE") {
+                content += '<td><input class="url bynder_selected_images_alttext" type="text"' +
+                    'data-index="' + i + '" id="alttext_' + i + '" data-imgType="' + select_item_type + '"' +
+                    'value="' + old_img_altText_new + '" />'
+            }else{
+                content += '<td></td>'
+            }
+
+            content += '<td>';
+            if(select_item_type == "IMAGE") {
+            content += '<select name="image_rol"  size="5" class="image_role_'+i+'" multiple disabled>';
+            
+            jQuery.each(attr, function( k, attr_val ){
+                var selected = "";
+                if(jQuery.inArray(attr_val.code, selected_role) > -1) {
+                    selected    =  'selected';
+                }
+                content += '<option value="'+attr_val.code+'" '+selected+'>'+attr_val.label+'</option>';
+            })
+            content +=    '</select></td>'
+            
+            
+                content +=    '<td><img src ="'+original_item_url+'" id="image_'+i+'" height="100" width="100" /></td>'
+            }else{
+                content += '<td><video width="100" height="100" controls>'+
+                            '<source src="'+ original_item_url +'" type="video/mp4" id="video_'+i+'">'+
+                            '</video></td>'
+            }
+
+            content += '<td><a href="#" class="btnDelete_'+i+'">'+
+                        '<img src ="'+ delete_icon +'" height="25" width="25" /></a>'+
+                        '</td></tr>';
+
+            jQuery("#sortable").on('click','.btnDelete_'+i,function(){
+                    var confirmation_result = confirm("Are you sure you want to delete?");
+                    if(confirmation_result){
+                        jQuery(this).closest('tr').remove();
+                        
+                    }
+             });
+            
+        });
+        jQuery('.dynamic-rows').find('.tbody_dynamic').html(content);
+         
+    }
+    jQuery('body').trigger('contentUpdated');
+    require([
+            'jquery',
+            'Magento_Ui/js/modal/modal'
+        ],
+        function($, modal) {
+            
+            jQuery("#external_image").appendTo(
+                jQuery('.product_form_product_form_bynder_url_modal').find('div .page-actions')
+                );
+           
+            var AjaxUrl = jQuery("#ajax_baseurl").val();
+            var syncMetaUrl = jQuery("#meta_baseurl").val();
+            var form_keys = jQuery("#form_keys").val();
+            
+            jQuery("body").trigger("contentUpdated");
+            jQuery("div .page-actions #external_image").on("click", function() {
+                BynderCompactView.open({
+                    mode: "MultiSelect",
+                    onSuccess: function(assets, additionalInfo) {
+                        var result = assets[0];
+                       
+                        var image_path = result.derivatives.webImage;
+                        
+                        var server_response = bynder_function(assets, additionalInfo);
+                        if (server_response) {
+                            return true;
+                        } else {
+                            return false;
+                        }
+
+                        function bynder_function(assets, a) {
+                            var asset = assets[0];
+                            
+                            var dataset_ids = [];
+                            var dataset_type = [];
+
+                            $.each(assets, function(index, value) {
+                                dataset_ids.push(value.databaseId);
+                                dataset_type.push(value.type);
+                            });
+
+                            var bdomain = localStorage.getItem("cvad");
+
+                            if (typeof bdomain == "undefined" || bdomain == null) {
+                                localStorage.setItem("cvad", configuration_domain); 
+                                bdomain = configuration_domain;                               
+                            }
+                            $.ajax({
+                                showLoader: true,
+                                url: AjaxUrl,
+                                type: "POST",
+                                data: {
+                                    databaseId: dataset_ids,
+                                    bdomain: bdomain,
+                                    datasetType: dataset_type,
+                                    form_key: form_keys
+                                },
+                                dataType: "json",
+                            }).done(function(data) {
+                                var total_images = 0;
+                                if (data.status == 2) {
+                                   
+                                    $(".success-msg-sync").hide();
+                                    $(".error-msg-sync").show();
+                                    $(".error-msg-sync").html(data.message);
+                                    setTimeout(function() { 
+                                        $('.error-msg-sync').delay(5000).fadeOut('slow');
+                                    }, 5000);
+                                    return false;
+                                } else if (data.status == 0) {
+                                    $(".success-msg-sync").hide();
+                                    $(".error-msg-sync").show();
+                                    $(".error-msg-sync").html(data.message);
+                                    setTimeout(function() {
+                                        $('.error-msg-sync').delay(5000).fadeOut('slow');
+                                    }, 5000);
+                                } else if (data.status == 1) {
+
+                                    var type_design = "";
+
+                                    type_design += '<div class="main-part bynder-imgbox-div">' +
+                                        '<div class="middle-content">' +
+                                        '<div class="main-one image-boxs" >';
+
+                                    $.each(data.data, function(index, r) {
+                                        $.each(r, function(i, res) {
+                                            
+                                           if(i.isdigit()){                                          
+                                            var item_type = res.dataset_type;
+                                            if (res.image_link == null) {
+                                                type_design += '<h5 style="color:red;">'+
+                                                                'You don\'t have access.<img src="'+res.main_link1+'">'+
+                                                                'Please Make It Public from Bynder</h5>';
+                                                return false;
+                                            } else {
+                                               
+                                                //var download_link = res.download_link;
+                                                
+                                                //var original_img_url = download_link.split("?");
+                                                var dataset_tag = '<img src="' + res.image_link + '">';
+                                                total_images++;
+                                                
+                                                if (item_type == "VIDEO") {
+                                                    dataset_tag = '<video width="100%" controls>'+
+                                                                   '<source src="'+res.image_link+'" type="video/mp4">'+
+                                                                   '<source src="'+res.main_link+'" type="video/ogg">'+
+                                                                   'Your browser does not support HTML video.</video>';
+                                                }
+
+                                                var dataset_size = '( Size: ' + res.size + ')'
+                                                if (res.size == "0x0") {
+                                                    dataset_size = " ";
+                                                }
+
+                                                if (res.size == "0x0" && item_type == "DOCUMENT") {
+                                                    type_design += '<div class="m-box">' +
+                                                    '<div class="m-img">' +
+                                                    dataset_tag +
+                                                    '</div>' +
+                                                    '<div class="m-content">' +
+                                                    '<input type="checkbox" class="image_types"'+
+                                                    'id="image_type_' + total_images + '"'+
+                                                    '"data-alttext"="'+r.thumbnails.img_alt_text+'"'+
+                                                    '"data-imagerole"="'+r.thumbnails.all_magento_role_options+'"'+
+                                                    'name="image_type_' + index + '"'+
+                                                    'data-itemType="'+item_type+'"value="'+res.type+index +'">'+
+                                                    '<label for="image_type_'+total_images+'">'+
+                                                        res.type +" "+dataset_size+
+                                                    '</label>'+
+                                                    '</div>' +
+                                                    '</div>';
+                                                }
+                                                if (item_type == "IMAGE" || item_type == "VIDEO") {
+                                                    if (item_type == "IMAGE") {
+                                                        var name_od_the_image = res.type;
+                                                    } else {
+                                                        var name_od_the_image = res.name;
+                                                    }
+                                                    if (res.size != "0x0") {
+                                                        type_design += '<div class="m-box">' +
+                                                        '<div class="m-img">' +
+                                                        dataset_tag +
+                                                        '</div>' +
+                                                        '<div class="m-content">' +
+                                                        '<input type="checkbox"'+
+                                                        '"data-alttext"="'+r.thumbnails.img_alt_text+'"'+
+                                                        'class="image_types" id="image_type_' + total_images + '"'+
+                                                        'name="image_type_'+index+'"'+
+                                                        'data-itemType="'+item_type+'"'+
+                                                        '"data-imagerole"="'+r.thumbnails.all_magento_role_options+'"'+
+                                                        'value="' + res.type + index + '">'+
+                                                        '<label for="image_type_' + total_images + '">'+ 
+                                                            name_od_the_image + " " + dataset_size + 
+                                                        '</label>' +
+                                                        '</div>' +
+                                                        '</div>';
+                                                    } else if (item_type == "VIDEO") {
+                                                    type_design += '<div class="m-box">' +
+                                                    '<div class="m-img">' +
+                                                    dataset_tag +
+                                                    '</div>' +
+                                                    '<div class="m-content">' +
+                                                    '<input type="checkbox" class="image_types"'+
+                                                    'id="image_type_'+total_images+'"'+
+                                                    '"data-alttext"="'+r.thumbnails.img_alt_text+'"'+
+                                                    '"data-imagerole"="'+r.thumbnails.all_magento_role_options+'"'+
+                                                    'name="image_type_'+index +'"'+
+                                                    'data-itemType="'+item_type+'"'+
+                                                    'value="' + res.type + index + '">' +
+                                                    '<label for="image_type_' + total_images + '">' + 
+                                                        name_od_the_image + " " + dataset_size + 
+                                                    '</label>' +
+                                                    '</div>' +
+                                                    '</div>';
+                                                    }
+                                                }
+
+                                            }
+                                           
+                                        } 
+
+                                        });
+                                    });
+                                    type_design += '</div> </div> </div>';
+
+                                    $("#compactViewContainer").html(type_design);
+                                    var options = {
+                                        type: "popup",
+                                        responsive: true,
+                                        innerScroll: true,
+                                        title: "Select Bynder Image",
+                                        buttons: [{
+                                            text: $.mage.__("Continue"),
+                                            id: "selected_item_btn",
+                                            class: "",
+                                            click: function() {
+
+                                                var selected_types = [];
+                                                $(".image_types").each(function() {
+                                                    var select_val = $(this).val();
+                                                    console.log("select_val -> ", select_val);
+                                                    if ($(this).prop("checked")) {
+                                                        selected_types.push(select_val);
+                                                    }
+                                                });
+
+                                                var doc_url = "";
+                                                var database_doc_array = [];
+                                                var video_url = "";
+                                                var database_videos_array = [];
+                                                if (selected_types.length > 0) {
+                                                    var img_url = "";
+                                                    var img_url_path = "";
+                                                    var database_array = [];
+                                                    var img_alttext_details = [];
+                                                    var bynder_new_data_array = [];
+                                                    
+                                                    $.each(data.data, function(index, r) {
+                                                        var image_links_test = assets[index].url;
+                                                        $.each(r, function(i, res) {
+                                                            // console.log("res => ", res);
+                                                            var bynder_md_id = res.bynderid;
+                                                            image_links_test += "&&thumb_link=" + res.image_link + "&&"
+                                                            var type_val = res.type + index;
+                                                            // console.log(type_val);
+                                                            if ($.inArray(type_val, selected_types) != -1) {
+                                                                if (res.dataset_type == "IMAGE") {
+                                                                    img_url += res.image_link + "\n";
+                                                                    img_url_path += res.image_link + ",";
+                                                                    /* change dowload link to 
+                                                                    public link by kuldip-theisens team*/
+                                                                    var pub_url = res.public_url;
+                                                                    console.log("link => ", pub_url);
+                                                                    var role_name = res.type;
+                                                                    database_array.push(pub_url);
+                                                                    var current_img_role = role_name;
+                                                                    if (jQuery.inArray(role_name,all_mg_roles) == -1) {
+                                                                        current_img_role = [];
+                                                                    }
+                                                                   /** "b_thum_url" : res.image_link, 
+                                                                    * change by kuldip */
+                                                                    var b_img_data = {
+                                                                        "b_item_url" : pub_url,
+                                                                        "b_alt_text" : r.thumbnails.img_alt_text,
+                                                                        "b_image_role":current_img_role,
+                                                                        "b_img_type" : res.dataset_type,
+                                                                        "b_thum_url" : pub_url,
+                                                                        "media_id"  :  bynder_md_id
+                                                                    };
+                                                                    bynder_new_data_array.push(b_img_data);
+                                                                } else if (res.dataset_type == "VIDEO") {
+
+                                                                    var download_link = res.download_link;
+                                                                    
+                                                                    var original_img_url = download_link.split("?");
+                                                                    var all_mg_role_options = r.thumbnails.all_magento_role_options;
+
+                                                                    video_url +=res.image_link+"@@"+res.main_link+" \n";
+                                                                    database_videos_array.push(
+                                                                        res.image_link + "@@" + res.main_link
+                                                                    );
+                                                                    var b_img_data = {
+                                                                        "b_item_url" : original_img_url[0],
+                                                                        "b_alt_text" : r.thumbnails.img_alt_text,
+                                                                        "b_image_role":all_mg_role_options,
+                                                                        "b_img_type" : res.dataset_type,
+                                                                        "b_thum_url" : res.main_link,
+                                                                        "media_id"  :  bynder_md_id
+                                                                    };
+                                                                    bynder_new_data_array.push(b_img_data);
+
+                                                                } else if (res.dataset_type == "DOCUMENT") {
+                                                                    doc_url += res.main_link + "@@" + res.name + "\n";
+                                                                    database_doc_array.push(
+                                                                        res.main_link + "@@" + res.name
+                                                                    );
+                                                                }
+                                                            }
+                                                        });
+                                                    });
+                                                    add_bynder_gallery_item(bynder_new_data_array);
+                                            
+                                                    this.closeModal();
+                                                } else {
+                                                    
+                                                    $(".success-msg-sync").hide();
+                                                    $(".error-msg-sync").show();
+                                                    $(".error-msg-sync").html("Sorry, you not selected any type ?");
+                                                    setTimeout(function() { 
+                                                        $('.error-msg-sync').delay(5000).fadeOut('slow');
+                                                    }, 5000);
+                                                }
+                                            }
+                                        }]
+                                    };
+                                    var popup = modal(options, $("#popup-modal"));
+                                    $("#popup-modal").modal("openModal");
+                                    return true;
+                                } else {
+                                   
+                                    $(".success-msg-sync").hide();
+                                    $(".error-msg-sync").show();
+                                    $(".error-msg-sync").html(data.message);
+                                    setTimeout(function() { 
+                                        $('.error-msg-sync').delay(5000).fadeOut('slow');
+                                    }, 5000);
+                                    return false;
+                                }
+                            });
+                        }
+                    }
+                });
+
+            });
+
+            String.prototype.isdigit = function()
+            {
+            return this.length && !(/\D/.test(this));
+            };
+
+            function add_bynder_gallery_item(data_item) {
+                
+                var old_selected_length = jQuery('.tbody_dynamic tr').length;
+                let item_length = data_item.length;
+                
+                var i = 0;
+                if(old_selected_length > 0){
+                    i = old_selected_length;
+                    item_length = old_selected_length + item_length;
+                }
+                
+                var k = 0;
+                var content = "";
+                for(i;i < item_length; i++)
+                {
+                    var input_field_val = data_item.shift();
+                    var item_v_url = input_field_val.b_item_url;
+                    var item_alt_text = input_field_val.b_alt_text;
+					let item_alt_text_new = item_alt_text.replace(/"/g, '');
+                    var item_image_role = input_field_val.b_image_role;
+                    var select_item_type = input_field_val.b_img_type;
+                    var item_thum_url = input_field_val.b_thum_url;
+
+                    var bynder_media_id = "";
+                    if(typeof input_field_val.media_id != "undefined"){
+                        bynder_media_id = input_field_val.media_id;
+                    }
+                    
+
+                    var selected_role = []
+                    if(item_image_role.length > 0){
+                        selected_role = item_image_role.split(",");
+                    }
+                    
+                    
+                    content = '<tr style="background: #efefef;" data-index="'+i+'"><td>'
+                    content += '<img src ="'+drag_img+'"/></td><td>'
+                    content += '<input class="url bynder_selected_images"'+
+                                'type="text" data-index="'+i+'"'+
+                                'data-bynderid="'+bynder_media_id+'"'+
+                                'data-imgType="'+select_item_type+'"'+
+                                'data-thumUrl="'+item_thum_url+'"'+
+                                'id="textboxId_'+i+'"'+
+                                'value="'+item_v_url+'" />'
+                    content += '</td>'
+
+                    if(select_item_type == "IMAGE") {
+                        content += '<td><input class="url bynder_selected_images_alttext" type="text"' +
+                            'data-index="' + i + '" id="alttext_' + i + '" data-imgType="' + select_item_type + '"' +
+                            'value="' + item_alt_text_new + '" />'
+                    }else{
+                        content += '<td></td>'
+                    }
+
+                    content += '<td>'
+                    if(select_item_type == "IMAGE"){
+                    content += '<select name="image_rol"  size="5" class="image_role_'+i+'" multiple disabled>'
+                        jQuery.each(attr, function( k, attr_val ){
+                            var selected = "";
+                            if(jQuery.inArray(attr_val.code, selected_role) > -1) {
+                                selected    =  'selected';
+                            }
+                            content += '<option value="'+attr_val.code+'" '+selected+'>'+attr_val.label+'</option>';
+                        })
+                        content +=    '</select></td>'
+
+                        
+                            content +='<td><img src ="'+item_v_url+'" id="image_'+i+'" height="100" width="100" /></td>'
+                        }else{
+                            content += '<td><video width="100" height="100" controls>'+
+                                        '<source src="'+ item_thum_url +'" type="video/mp4" id="video_'+i+'">'+
+                                        '</video></td>'
+                            
+                        }
+                    
+                    content +='<td><a href="#" class="btnDelete_'+i+'">'+
+                                '<img src ="'+delete_icon+'" height="25" width="25"/>'+
+                                '</a></td></tr>';
+                    jQuery("#sortable").on('click','.btnDelete_'+i,function(){
+                           jQuery(this).closest('tr').remove();
+                     });
+                    jQuery('.dynamic-rows').find('.tbody_dynamic').append(content);
+                }
+            }
+            const equalsCheck = (a, b) => {
+                return JSON.stringify(a) === JSON.stringify(b);
+            }
+            jQuery(".save_image").on('click',function(){
+                var all_selected_images = [];
+				var formKey = FORM_KEY;
+                jQuery('.bynder_selected_images').each(function(i){
+                    var select_img = jQuery(this).val();
+                    var item_index = jQuery(this).attr("data-index");
+                    var item_alt_text = jQuery("#alttext_"+item_index).val();
+                    var item_img_type = jQuery(this).attr("data-imgType");
+                    var item_thum_url = jQuery(this).attr("data-thumUrl");
+                    var is_imported = jQuery(this).attr("data-isimport");
+                    var item_media_id = jQuery(this).attr("data-bynderid");
+					var is_order = jQuery(this).attr("data-isorder");
+                    var n_image_role = jQuery('.image_role_'+item_index).val();
+                    
+                    /* this is new code for update unique role for image */                    
+                    if(all_selected_images.length > 0){
+                        jQuery.each (all_selected_images, function (indexes, o_imgs){
+                            if(o_imgs.item_type == "IMAGE"){
+                                var diff = jQuery(o_imgs.image_role).not(n_image_role).get();
+                                all_selected_images[indexes].image_role = diff;
+                            }else{
+                                all_selected_images[indexes].image_role = [];
+                            }
+                        });
+                    }
+                    
+                    var images_details = {
+                        "item_url":select_img,
+                        "alt_text": item_alt_text,
+                        "image_role": n_image_role,
+                        "item_type" : item_img_type,
+                        "thum_url" : item_thum_url,
+                        "bynder_md_id": item_media_id,
+                        "is_import" : is_imported,
+						"is_order" : is_order
+                    };
+                    all_selected_images.push(images_details);
+                });
+                
+               
+                var new_final_array = [];
+                
+                if(all_selected_images.length > 0){
+                    
+                    jQuery.each(all_selected_images,function(k,v){
+                        
+                        var imag_url_val = v.item_url;
+                        var new_item_roles = v.image_role;
+                        var origi_url = imag_url_val;
+
+                        var image_url_explode = "";
+                        var img_media_id = v.bynder_md_id;
+                        var image_url_explode1 = [];
+                        var aws_word = "X-Amz-SignedHeaders";
+                        var search_result = imag_url_val.indexOf(aws_word);
+                        if(search_result > -1){
+                            image_url_explode1 = imag_url_val.split("?");
+                            origi_url = image_url_explode1[0];
+                        }
+
+                        if(jQuery.inArray(origi_url, past_item_array) > -1){
+                            
+                            image_url_explode = origi_url.split("/");
+                            
+                            /*
+                            img_media_id = image_url_explode[4];
+                            if(search_result > -1){
+                                img_media_id = image_url_explode[4];
+                            }else{
+                                img_media_id = image_url_explode[5];
+                            }
+                            */
+
+                            if (v.item_type == 'IMAGE') {
+                                let match_index = past_item_array.indexOf(origi_url);
+                                var check_old_item_role = past_item_role_array[match_index];
+                                var count_old_array_role = check_old_item_role.length;
+                                var count_new_array_role = new_item_roles.length;
+                                var old_item_role = "original";
+                                if (count_old_array_role > 0) {
+                                    old_item_role = check_old_item_role[0];
+                                }
+                                if (count_old_array_role == count_new_array_role) {
+                                    if (check_old_item_role[0] == new_item_roles[0]) {
+                                        /* do nothing */
+                                    } else {
+                                        var new_changes = {
+                                            "role" : new_item_roles[0],
+                                            "image_url" : imag_url_val,
+                                            "item_key" : img_media_id,
+                                            "old_role_name": old_item_role,
+                                            "type"  : 1
+                                        }
+                                        new_final_array[k] = new_changes;
+                                    }
+                                } else {
+                                    if (count_new_array_role > 0) {
+                                        var new_changes = {
+                                            "role" : new_item_roles[0],
+                                            "image_url" : imag_url_val,
+                                            "item_key" : img_media_id,
+                                            "old_role_name": old_item_role,
+                                            "type"  : 2
+                                        }
+                                        new_final_array[k] = new_changes;
+                                    } else {
+                                        var new_changes = {
+                                            "role" : "original",
+                                            "image_url" : imag_url_val,
+                                            "item_key" : img_media_id,
+                                            "old_role_name": old_item_role,
+                                            "type"  : 3
+                                        }
+                                        new_final_array[k] = new_changes;
+                                    }
+                                }
+                            }
+                        } 
+                    });
+                    if(new_final_array.length > 0){
+                        var new_value_obj = JSON.stringify(new_final_array);
+                        
+                        var bdomain = localStorage.getItem("cvad");
+                        if (typeof bdomain == "undefined" || bdomain == null || bdomain == "") {
+                            localStorage.setItem("cvad", configuration_domain); 
+                            bdomain = configuration_domain;                               
+                        }
+                        /*jQuery.ajax({
+                            showLoader: true,
+                            url: syncMetaUrl,
+                            type: "POST",
+                            data: {
+                                bdomain: bdomain,
+                                new_valu_array: new_value_obj,
+                                form_key: form_keys
+                            },
+                            dataType: "json",
+                        }).done(function(data) { 
+                            if(data.status == 1){
+                                jQuery.each(all_selected_images,function(k,v){
+                                    if(typeof data.data[k] != "undefined"){
+                                        var updated_data_details = data.data[k];
+                                        if(typeof updated_data_details.type != "undefined"){
+                                            //change dowload link to public link by kuldip-theisens team
+                                            all_selected_images[k].item_url = updated_data_details.public_url;
+                                            all_selected_images[k].thum_url = updated_data_details.public_url;
+                                        }
+                                    }
+                                });
+                            } */
+
+                            var myJsonString = JSON.stringify(all_selected_images);
+                            jQuery('textarea[name="product[bynder_multi_img]"]').val(myJsonString);
+                            jQuery('textarea[name="product[bynder_videos]"]').val("");
+                            /*document.cookie = "bynder_image=" + myJsonString + "; path=/;";*/
+                            var image_coockie_id = 0;
+                            try{
+                                image_coockie_id = Cookies.get('image_coockie_id');
+                            }catch(err){
+                                document.cookie = "image_coockie_id=" + image_coockie_id + "; path=/;";
+                            }
+                            var product_id = '<?= $block->escapeHtml($product_id); ?>';
+                            $.ajax({
+                                url: add_temp_data,
+                                showLoader: true,
+                                data: {
+                                    product_id: product_id,
+                                    image:myJsonString,
+                                    image_coockie_id:image_coockie_id
+                                },
+                                success: function (res) {
+                                    /* success data*/
+                                },
+                            });
+                        //});
+                    } else {
+                        if (all_selected_images != '') {
+                            var myJsonString = JSON.stringify(all_selected_images);
+                            jQuery('textarea[name="product[bynder_multi_img]"]').val(myJsonString);
+                        } else {
+                            jQuery('textarea[name="product[bynder_multi_img]"]').val("");
+                        }
+                    
+                        jQuery('textarea[name="product[bynder_videos]"]').val("");
+                        /*document.cookie = "bynder_image=" + myJsonString + "; path=/;";*/
+                        var image_coockie_id = 0;
+                        try{
+                            image_coockie_id = Cookies.get('image_coockie_id');
+                        }catch(err){
+                            document.cookie = "image_coockie_id=" + image_coockie_id + "; path=/;";
+                        }
+                        var product_id = '<?= $block->escapeHtml($product_id); ?>';
+                        $.ajax({
+                            url: add_temp_data,
+                            showLoader: true,
+                            data: {
+                                product_id: product_id,
+                                image:myJsonString,
+                                image_coockie_id:image_coockie_id
+                            },
+                            success: function (res) {
+                                /* success data*/
+                            },
+                        });
+                    }
+                }else{
+                    if (all_selected_images != '') {
+                        var myJsonString = JSON.stringify(all_selected_images);
+                        jQuery('textarea[name="product[bynder_multi_img]"]').val(myJsonString);
+                    } else {
+                        jQuery('textarea[name="product[bynder_multi_img]"]').val("");
+                    }
+                
+                    jQuery('textarea[name="product[bynder_videos]"]').val("");
+                    /*document.cookie = "bynder_image=" + myJsonString + "; path=/;";*/
+                    var image_coockie_id = 0;
+                    try{
+                        image_coockie_id = Cookies.get('image_coockie_id');
+                    }catch(err){
+                        document.cookie = "image_coockie_id=" + image_coockie_id + "; path=/;";
+                    }
+                    var product_id = '<?= $block->escapeHtml($product_id); ?>';
+                    $.ajax({
+                        url: add_temp_data,
+                        showLoader: true,
+                        data: {
+                            product_id: product_id,
+                            image:myJsonString,
+                            image_coockie_id:image_coockie_id,
+							form_key: formKey
+                        },
+                        success: function (res) {
+                            /* success data*/
+                        },
+                    });
+                }
+        });
+        jQuery('#import_image_bynder').click(function () {
+            var all_selected_images = [];
+			var formKey = FORM_KEY;
+            jQuery('.bynder_selected_images').each(function(i){
+                var select_img = jQuery(this).val();
+                var item_index = jQuery(this).attr("data-index");
+                var item_alt_text = jQuery("#alttext_"+item_index).val();
+                var item_img_type = jQuery(this).attr("data-imgType");
+                var item_thum_url = jQuery(this).attr("data-thumUrl");
+                var is_imported = jQuery(this).attr("data-isimport");
+                var item_media_id = jQuery(this).attr("data-bynderid");
+
+                var n_image_role = jQuery('.image_role_'+item_index).val();
+                
+                /* this is new code for update unique role for image */                    
+                if(all_selected_images.length > 0){
+                    jQuery.each (all_selected_images, function (indexes, o_imgs){
+                        if(o_imgs.item_type == "IMAGE"){
+                            var diff = jQuery(o_imgs.image_role).not(n_image_role).get();
+                            all_selected_images[indexes].image_role = diff;
+                        }else{
+                            all_selected_images[indexes].image_role = [];
+                        }
+                    });
+                }
+                
+                var images_details = {
+                    "item_url":select_img,
+                    "alt_text": item_alt_text,
+                    "image_role": n_image_role,
+                    "item_type" : item_img_type,
+                    "thum_url" : item_thum_url,
+                    "bynder_md_id": item_media_id,
+                    "is_import" : is_imported
+                };
+                all_selected_images.push(images_details);
+            });
+            if (all_selected_images.length > 0) {
+                var myJsonString = JSON.stringify(all_selected_images);
+                $.ajax({
+                    url: import_image_url,
+                    showLoader: true,
+                    dataType: 'json',
+                    data: {
+                        product_id: cur_product_id,
+                        bynder_in:bynder_img_n,
+                        image:myJsonString,
+                        sku:cur_sku,
+						form_key: formKey
+                    },
+                    success: function (res) {
+                        if(res.status == 1){
+                            var image_new_json = res.data;
+                            $.each(image_new_json,function(i,v){
+                                $("#textboxId_"+i).attr("data-isimport",v.is_import);
+                            });
+                        }
+                        $(".success-msg-sync").show();
+                        $(".error-msg-sync").hide();
+                        $(".success-msg-sync").html("Image Import in Folder Successfully...!");
+                        setTimeout(function () { 
+                            $('.success-msg-sync').delay(5000).fadeOut('slow');
+                        },5000);
+                    },
+                });
+            } else {
+                var myJsonString = "";
+            }
+        });
+
+            jQuery("#sortable tbody").sortable({
+                cursor: "move",
+                placeholder: "sortable-placeholder",
+                helper: function(e, tr)
+                {
+                    var $originals = tr.children();
+                    var $helper = tr.clone();
+                    $helper.children().each(function(index)
+                    {
+                    jQuery(this).width($originals.eq(index).width());
+                    });
+                    return $helper;
+                }
+            }).disableSelection();
+            
+            function old_new_image(img){
+                var selected_images = JSON.parse(img);
+            }
+
+        });
+</script>

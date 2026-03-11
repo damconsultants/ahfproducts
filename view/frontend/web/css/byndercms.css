@@ -1,0 +1,12 @@
+@page {
+    size: auto;   /* auto is the initial value */
+    margin: 0;  /* this affects the margin in the printer settings */
+}
+
+.swatch-option.image {
+    background-size: cover !important;
+}
+
+.swatch-option-tooltip .image {
+    background-size: cover !important;
+}

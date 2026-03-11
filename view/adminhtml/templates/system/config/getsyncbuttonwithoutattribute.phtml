@@ -1,0 +1,34 @@
+<script>
+    require([
+        'jquery',
+        'prototype'
+    ], function($) {
+        $('#bt_id_3').click(function() {
+            var product_sku_1 = $('textarea#byndersyncdatawithout_bynder_sync_data_without_select_sku_1').val();
+            var params = {
+                product_sku_1: product_sku_1,
+            };
+            new Ajax.Request('<?= /* @noEscape */ $block->getAjaxUrl() ?>', {
+                parameters: params,
+                loaderArea: true,
+                asynchronous: true,
+                onCreate: function() {
+                    $('#byndersyncdatawithout_bynder_sync_data_without_select_sku_1').text('');
+                },
+              
+                onSuccess: function(transport) {
+                    var resultText = '';
+                    if (transport.status > 200) {
+                        resultText = transport.statusText;
+                    } else {
+                        var response = JSON.parse(transport.responseText);
+                        resultText = response.message
+                    }
+                    $('#byndersyncdatawithout_bynder_sync_data_without_select_sku_1').text(resultText);
+
+                }
+            });
+        });
+    });
+</script>
+<?= $block->getButtonHtml(); ?>

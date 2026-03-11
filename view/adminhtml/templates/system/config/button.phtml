@@ -1,0 +1,67 @@
+<?= $block->getButtonHtml(); ?>
+<style>
+    iframe.iframe {
+        height: 615px;
+        width: 1350px;
+    }
+</style>
+<div id="popup-mpdal" style="display:none;">
+    <iframe src="<?= $block->getIframeurl() ?>" title="Iframe Example" class="iframe"></iframe>
+</div>
+
+<div id="bynder-module-messages" class="bynder-module-messages" style="display: none">
+    <div class="messages">
+    </div>
+</div>
+
+<script>
+    require(
+        [
+            'jquery',
+            'Magento_Ui/js/modal/modal',
+            'prototype'
+        ],
+        function(
+            $,
+            modal
+        ) {
+            var options = {
+                type: 'popup',
+                responsive: true,
+                innerScroll: true,
+                buttons: [{
+                    text: $.mage.__('Close'),
+                    class: '',
+                    click: function() {
+                        this.closeModal();
+                    }
+                }]
+            };
+            var ajaxUrl = '<?= $block->escapeUrl($block->getAjaxUrl()); ?>';
+			var fieldKey = $('#bynderconfig_bynder_credential_licenses_key');
+			var popup = modal(options, $('#popup-mpdal'));
+            $('#bt_id').click(function() {
+				var formKey = FORM_KEY;
+                jQuery.ajax({
+                    url: ajaxUrl,
+                    /* dataType: 'json',*/
+                    showLoader: true,
+					type: 'POST',
+					data: {
+						form_key: formKey // Include the form key
+					},
+                    success: function(result) {
+                        var response = JSON.parse(result);
+                        if (response.status == 1) {
+                            fieldKey.val(response.data.license_key);
+                        } else {
+                            $("#popup-mpdal").modal("openModal");
+                        }
+                    }
+                });
+
+            });
+
+        }
+    );
+</script>

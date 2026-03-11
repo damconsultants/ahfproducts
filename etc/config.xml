@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../Store/etc/config.xsd">
+    <default>
+        <cronimageconfig>
+            <set_limit_product_sku>
+                <product_sku_limt>50</product_sku_limt>
+            </set_limit_product_sku>
+        </cronimageconfig>
+    </default>
+</config>

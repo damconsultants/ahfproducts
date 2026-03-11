@@ -1,0 +1,13 @@
+<?php if ($block->isUpdateAvailable()): ?>
+    <div class="message message-warning">
+        <strong>A new version is available and recommended.</strong><br>
+        Current Version: <strong><?= $block->getCurrentVersion(); ?></strong><br>
+        Latest Version: <strong><?= $block->getLatestVersion(); ?></strong><br>
+        <a href="<?= $block->escapeUrl($block->getChangeLogUrl()) ?>" target="_blank">View Change Log</a>
+    </div>
+<?php else: ?>
+    <div class="message message-success">
+        Current Version: <strong><?= $block->getCurrentVersion(); ?></strong><br>
+        <strong>Your module is up to date!</strong>
+    </div>
+<?php endif; ?>

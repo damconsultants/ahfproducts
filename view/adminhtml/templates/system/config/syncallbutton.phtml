@@ -1,0 +1,59 @@
+<?= $block->getButtonHtml(); ?>
+<div class="ajax-loader" style="display: none;">
+    <img src="<?= $this->getViewFileUrl('images/loader-2.gif'); ?>" alt="Loading..." />
+</div>
+<script>
+    require(['jquery'], function ($) {
+        $(document).ready(function () {
+            $("#bt_id_3").click(function () {
+                var product_sku = $('textarea#byndersyncdata_bynder_sync_data_sku').val();
+                var select_attribute = $('select#byndersyncdata_bynder_sync_data_select').val();
+                var url = '<?= $block->escapeUrl($block->getAjaxUrl()); ?>';
+                $(".ajax-loader").show();
+                $.ajax({
+                    url: url,
+                    type: 'POST',
+                    loaderArea: true,
+                    data: { product_sku: product_sku, select_attribute: select_attribute },
+                    // beforeSend: function () {
+                    //     $('body').trigger('processStart');
+                    // },
+                    success: function (response) {
+                        if (response.status == 1) {
+                            $('#byndersyncdata_bynder_sync_data_sku').text('');
+                            $(".success-msg-sync").show().html(response.message).delay(5000).fadeOut('slow');
+                        } else {
+                            $(".error-msg-sync").show().html(response.message).delay(5000).fadeOut('slow');
+                        }
+                    },
+                    error: function () {
+                        alert("Error in AJAX request.");
+                    },
+                    complete: function () {
+                        // Hide loader after AJAX request completes
+                        $(".ajax-loader").hide();
+                    }
+                });
+            });
+        });
+    });
+</script>
+
+<style>
+
+    .ajax-loader {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+        background: rgba(255, 255, 255, 0.8);
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    .ajax-loader img {
+        width: 50px;
+        /* Adjust size as needed */
+    }
+</style>

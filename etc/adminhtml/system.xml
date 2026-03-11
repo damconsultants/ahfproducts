@@ -1,0 +1,205 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <tab id="bynder_tab" translate="label" sortOrder="0">
+            <label>AHF Configuration</label>
+        </tab>
+        <section id="bynderconfig" translate="label" sortOrder="0" showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>Configuration</label>
+            <tab>bynder_tab</tab>
+            <resource>DamConsultants_Ahfproducts::config</resource>
+            <group id="bynder_credential" translate="label" sortOrder="1" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>AHF Credential</label>
+                <field id="version_check" translate="label" type="label" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\Adminhtml\System\Config\VersionCheck</frontend_model>
+                </field>
+                <field id="bynderdomain" translate="label" type="text" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>AHF Domain</label>
+                    <comment>Enter your AHF Domain Name Here Without https://.</comment>
+                </field>
+                <field id="permanent_token" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Permanent Token</label>
+                    <comment>Enter your AHF Permanent Token Here.(Note:- Please, given Full permission your Account.)</comment>
+                </field>
+				<field id="licenses_key" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>License Key</label>
+                    <comment>Enter your License Key Here.</comment>
+                </field>
+                <field id="bt_id" translate="label" type="button" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\Button</frontend_model>
+                </field>
+            </group>
+        </section>
+        <section id="byndersyncdata" translate="label" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>Sync. AHF Data</label>
+            <tab>bynder_tab</tab>
+            <resource>DamConsultants_Ahfproducts::config</resource>
+            <group id="bynder_sync_data" translate="label" sortOrder="1" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Sync. AHF Data</label>
+                <field id="select" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Select Attribute</label>
+                    <source_model>DamConsultants\Ahfproducts\Model\Config\Source\Select</source_model>
+                    <comment>Select the Attribute which Data you want to Sync.</comment>
+                </field>
+                <field id="sku_limit" translate="label" type="text" sortOrder="2" showInDefault="2" showInWebsite="1" showInStore="1">
+                    <label>Enter Your Sku Limit</label>
+                    <validate>validate-digits</validate>
+                    <comment>Enter Your Only Number.</comment>
+                </field>
+                <field id="check_for_all" translate="label" sortOrder="3" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Get All Sku</label>
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\Checkbox</frontend_model>
+                </field>
+                <field id="sku" translate="label" type="textarea" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Product Sku</label>
+                    <comment>Enter Sku code with comma separated.(Ex. 24-MB01,25-MB02,26-MB03).</comment>
+                </field>
+                <field id="bt_id_2" translate="label" type="button" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="2">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\GetSyncButton</frontend_model>
+                </field>
+                <field id="bt_id_1" translate="label" type="button" sortOrder="6" showInDefault="1" showInWebsite="1" showInStore="3">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\SyncButton</frontend_model>
+                </field>
+				<field id="bt_id_3" translate="label" type="button" sortOrder="7" showInDefault="1" showInWebsite="1" showInStore="3">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\SyncAllButton</frontend_model>
+                </field>
+            </group>
+        </section>
+        <section id="cronimageconfig" translate="label" sortOrder="90" showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>Cron Config</label>
+            <tab>bynder_tab</tab>
+            <resource>DamConsultants_Ahfproducts::config</resource>
+            <group id="configurable_cron" translate="label" sortOrder="10" showInDefault="1" showInWebsite="1"  showInStore="0">
+                <label>Fetch Null SKU To Magento</label>
+				<field id="fetch_enable" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Enable Cron</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+				<field id="fetch_product_sku_limt" translate="label" type="text" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Your Sku Limit</label>
+                    <validate>validate-digits</validate>
+                    <comment>Enter Your Only Number.</comment>
+					<depends>
+                        <field id="fetch_enable">1</field>
+                     </depends>
+                </field>
+                <field id="frequency" translate="label" type="select" sortOrder="3" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Frequency</label>
+                    <source_model>DamConsultants\Ahfproducts\Model\Config\Source\Frequency</source_model>
+                    <backend_model>DamConsultants\Ahfproducts\Model\Config\CronConfig</backend_model>
+                    <comment>Select The Cron Frequency.</comment>
+					<depends>
+                        <field id="fetch_enable">1</field>
+                     </depends>
+                </field>
+                <field id="your_min_featch" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Minutes</label>
+                    <validate>validate-digits</validate>
+                    <comment>Enter Your Only Number.</comment>
+                    <depends>
+                        <field id="frequency">E</field>
+						<field id="fetch_enable">1</field>
+                    </depends>
+                </field>
+                <field id="time" translate="label comment" sortOrder="4" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Start Time</label>
+                    <comment>Select The Cron Start Time.</comment>
+                    <depends>
+                        <field id="frequency" separator=",">D,W,M</field>
+						<field id="fetch_enable">1</field>
+                    </depends>
+                </field>
+				 <field id="configurable_cron_info" translate="label" type="button" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\FeatchNullSkuToMagento</frontend_model>
+                </field>
+                <!-- <comment>Select The Cron Frequency.</comment> -->
+
+            </group>
+            <group id="auto_add_bynder" translate="label" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Auto Add Data Product</label>
+				<field id="auto_enable" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Enable Cron</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+				<field id="auto_product_sku_limt" translate="label" type="text" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Your Sku Limit</label>
+                    <validate>validate-digits</validate>
+                    <comment>Enter Your Only Number.</comment>
+					<depends>
+                        <field id="auto_enable">1</field>
+                     </depends>
+                </field>
+				<field id="auto_add_sku_frequency" translate="label" type="select" sortOrder="3" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Frequency</label>
+                    <source_model>DamConsultants\Ahfproducts\Model\Config\Source\Frequency</source_model>
+                    <backend_model>DamConsultants\Ahfproducts\Model\Config\AutoSkuCronConfig</backend_model>
+                    <comment>Select The Cron Frequency.</comment>
+					<depends>
+                        <field id="auto_enable">1</field>
+                     </depends>
+                </field>
+				<field id="your_min_auto_add_sku_frequency" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Minutes</label>
+                    <validate>validate-digits</validate>
+                    <comment>Enter Your Only Number.</comment>
+                    <depends>
+                        <field id="auto_add_sku_frequency">E</field>
+						<field id="auto_enable">1</field>
+                     </depends>
+                </field>
+                <field id="auto_add_sku_time" translate="label comment" sortOrder="4" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Start Time</label>
+                    <comment>Select The Cron Start Time.</comment>
+                    <depends>
+                        <field id="auto_add_sku_frequency" separator=",">D,W,M</field>
+						<field id="auto_enable">1</field>
+                    </depends>
+                </field>
+                <field id="auto_add_bynder_info" translate="label" type="button" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\AutoAddDataProduct</frontend_model>
+                </field>
+            </group>
+			<group id="delete_cron_bynder" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Delete Data Product</label>
+				<field id="delete_enable" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Enable Cron</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="delete_cron_last_time" translate="label" type="text" sortOrder="2" showInDefault="2" showInWebsite="1" showInStore="1">
+                    <label>Last Cron Time</label>
+					<frontend_model>DamConsultants\Ahfproducts\Block\System\Config\Form\Field\Disable</frontend_model>
+                </field>
+				<field id="delete_frequency" translate="label" type="select" sortOrder="3" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Frequency</label>
+                    <source_model>DamConsultants\Ahfproducts\Model\Config\Source\Frequency</source_model>
+                    <backend_model>DamConsultants\Ahfproducts\Model\Config\DeleteCronConfig</backend_model>
+                    <comment>Select The Cron Frequency.</comment>
+					<depends>
+                        <field id="delete_enable">1</field>
+                     </depends>
+                </field>
+				<field id="your_min_delete_frequency" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Minutes</label>
+                    <validate>validate-digits</validate>
+                    <comment>Enter Your Only Number.</comment>
+                    <depends>
+                        <field id="delete_frequency">E</field>
+						<field id="delete_enable">1</field>
+                     </depends>
+                </field>
+                <field id="delete_time" translate="label comment" sortOrder="4" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Start Time</label>
+                    <comment>Select The Cron Start Time.</comment>
+                    <depends>
+                        <field id="delete_frequency" separator=",">D,W,M</field>
+						<field id="delete_enable">1</field>
+                    </depends>
+                </field>
+                <field id="delete_bynder_info" translate="label" type="button" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\DeleteDataProduct</frontend_model>
+                </field>
+            </group>
+        </section>
+
+    </system>
+</config>

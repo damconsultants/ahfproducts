@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<form xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <fieldset name="general" sortOrder="20">
+        <field name="poster" formElement="input">
+			<settings>
+                <dataType>text</dataType>
+                <label translate="true">Video Thumbnail URL</label>
+            </settings>
+		</field>
+    </fieldset>
+</form>

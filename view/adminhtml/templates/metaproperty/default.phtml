@@ -1,0 +1,163 @@
+<?php
+$block_get_data = $block->getMetaData();
+$get_metaData = $block_get_data['metadata'];
+$default_sku_value = isset($block_get_data['sku_selected']) ? $block_get_data['sku_selected'] : '0';
+$default_image_role_value = isset($block_get_data['image_role_selected']) ? $block_get_data['image_role_selected'] : '0';
+$default_image_alt_text = isset($block_get_data['image_alt_text']) ? $block_get_data['image_alt_text'] : '0';
+$default_image_media_order = isset($block_get_data['image_order']) ? $block_get_data['image_order'] : '0';
+$default_sub_type = isset($block_get_data['sub_type']) ? $block_get_data['sub_type'] : '0';
+$url = $block->getMainUrl();
+$syncMetaUrl = $block->escapeUrl($block->getSynmetaProperty());
+
+$sku_properites = "";
+$image_role_properites = "";
+$alt_properites = "";
+$is_order = "";
+$is_sub_type = "";
+if (count($get_metaData) > 0) {
+    foreach ($get_metaData as $newKey => $newValue) {
+        $sku_checked = "";
+        $image_role_checked = "";
+        $alt_checked = "";
+		$media_order_checked = "";
+        $sub_type_checked = "";
+        if ($default_sku_value == $newKey) {
+            $sku_checked = "selected";
+        } elseif ($default_image_role_value == $newKey) {
+            $image_role_checked = "selected";
+        } elseif ($default_image_alt_text == $newKey) {
+            $alt_checked = "selected";
+        } elseif ($default_image_media_order == $newKey) {
+            $media_order_checked = "selected";
+        } elseif ($default_sub_type == $newKey) {
+            $sub_type_checked = "selected";
+        }
+        $sku_properites .= '<option value="' . $newKey . '" ' . $sku_checked . ' >' .
+                        $block->escapeHtml($newValue) .
+                        '</option>';
+        $image_role_properites .= '<option value="' . $newKey . '" ' . $image_role_checked . ' >' .
+                        $block->escapeHtml($newValue) .
+                        '</option>';
+        $alt_properites .= '<option value="' . $newKey . '" ' . $alt_checked . ' >' .
+                            $newValue .
+                            '</option>';
+		$is_order .= '<option value="' . $newKey . '" ' . $media_order_checked . ' >' .
+            $newValue .
+            '</option>';
+        $is_sub_type .= '<option value="' . $newKey . '" ' . $sub_type_checked . ' >' .
+            $newValue .
+            '</option>';
+    }
+}
+?>
+<button type="submit" class="action- scalable primary syncMetaProperties" 
+        name="submit" id="btn_submit sync-metaproperties" 
+        style="margin-top: 30px; border-radius: 4px; width: 247px;  margin-left: auto; display: block;">
+    <span>
+        <?= $block->escapeHtml('Sync Metaproperties');?>
+    </span>
+</button>
+<form name="metaproperty" action="<?= $block->escapeUrl($block->getSubmitUrl()); ?>" method="post"
+    enctype="multipart/form-data">
+    <?= $block->getBlockHtml('formkey');
+    ?>
+    <div class="main_container dear-stock-sec">
+        <div class="main_header_master admin__data-grid-wrap">
+            <div class="main_container_masterdata admin__data-grid-wrap product-imp-sec">
+                <label> <strong>The Meta Property Configration For the SKU:-</strong> </label> <br><br>
+                <div class="form-check form-check-inline" style="float: left;width: 100%;">
+
+                    <label class="form-check-label">
+                        <input type="hidden" name="system_slug[]" value="sku" />
+                        <label> <strong>Property List:-</strong> </label> <br><br>
+                        <select class="selectbox_item" id="bynder_property" name="select_meta_tag[]">
+                            <option value="0">Select The option</option>
+                            <?= $sku_properites; ?>
+                        </select>
+                    </label>
+
+                </div>
+                <hr>
+                <label> <strong> The Meta Property Configration For the Image Role :-</strong> </label> <br><br>
+                <div class="form-check form-check-inline" style="float: left;width: 100%;">
+
+                    <label class="form-check-label">
+                        <label> <strong>Property List:-</strong> </label> <br><br>
+                        <input type="hidden" name="system_slug[]" value="image_role" />
+                        <select class="selectbox_item" id="bynder_property_image_role" name="select_meta_tag[]">
+                            <option value="0">Select The option</option>
+                            <?= $image_role_properites; ?>
+                        </select>
+                    </label>
+                </div>
+                <hr>
+                <label> <strong> The Meta Property Configration For the Alt Text :-</strong> </label> <br><br>
+                <div class="form-check form-check-inline" style="float: left;width: 100%;">
+                    <label class="form-check-label">
+                        <label> <strong>Property List:-</strong> </label> <br><br>
+                        <input type="hidden" name="system_slug[]" value="alt_text" />
+                        <select class="selectbox_item" id="bynder_property_alt_tax" name="select_meta_tag[]">
+                            <option value="0">Select The option</option>
+                            <?= $alt_properites; ?>
+                        </select>
+                    </label> 
+                </div>
+				<hr>
+                <label> <strong> The Meta Property Configration For the Media Order :-</strong> </label> <br><br>
+                <div class="form-check form-check-inline" style="float: left;width: 100%;">
+                    <label class="form-check-label">
+                        <label> <strong>Property List:-</strong> </label> <br><br>
+                        <input type="hidden" name="system_slug[]" value="image_order" />
+                        <select class="selectbox_item" id="bynder_property_media_order" name="select_meta_tag[]">
+                            <option value="0">Select The option</option>
+                            <?= $is_order ?>
+                        </select>
+                    </label> 
+                </div>
+                <hr>
+                <label> <strong> The Meta Property Configration For the SubType :-</strong> </label> <br><br>
+                <div class="form-check form-check-inline" style="float: left;width: 100%;">
+                    <label class="form-check-label">
+                        <label> <strong>Property List:-</strong> </label> <br><br>
+                        <input type="hidden" name="system_slug[]" value="sub_type" />
+                        <select class="selectbox_item" id="bynder_property_sub_type" name="select_meta_tag[]">
+                            <option value="0">Select The option</option>
+                            <?= $is_sub_type ?>
+                        </select>
+                    </label>
+                    <button type="submit" class="action- scalable primary" name="submit" id="btn_submit"
+                        style="margin-top: 30px; border-radius: 4px; width: 247px;  margin-left: auto; display: block;">
+                        <span>
+                            <?= $block->escapeHtml('Save Metaproperties'); ?>
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+<script>
+    require(["jquery"],function($) {
+        $(document).ready(function() {
+            $('.syncMetaProperties').click(function () {
+				var formKey = FORM_KEY;
+                var customurl = '<?= $block->escapeHtml($syncMetaUrl); ?>';
+                    $.ajax({
+                        url: customurl,
+                        type: 'POST',
+						data: {
+							form_key: formKey // Include the form key
+						},
+                        showLoader: true,
+                        async: true,
+                        loaderArea: true,
+                        timeout: 300000,
+                    complete: function(response) { 
+                        location.reload(true);
+                    }
+                });
+            });
+       });
+    });
+</script>
+

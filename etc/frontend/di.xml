@@ -1,0 +1,20 @@
+<?xml version="1.0" ?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <!-- <preference for="Magento\Catalog\Block\Product\View\Gallery" type="DamConsultants\Ahfproducts\Block\Product\View\Gallery" />
+    <preference for="Magento\Catalog\Block\Product\ImageFactory" type="DamConsultants\Ahfproducts\Block\Product\ImageFactory" /> -->
+    <preference for="Magento\Swatches\Block\Product\Renderer\Configurable" type="DamConsultants\Ahfproducts\Block\Product\Renderer\Configurable" />
+    <preference for="Magento\Swatches\Block\Product\Renderer\Listing\Configurable" type="DamConsultants\Ahfproducts\Block\Product\Renderer\Listing\Configurable" />
+    <preference for="Magento\Swatches\Helper\Data" type="DamConsultants\Ahfproducts\Helper\SwatchData" />
+    <type name="Magento\Checkout\CustomerData\AbstractItem">
+        <plugin name="Change_Product_Image_In_Minicart" type="DamConsultants\Ahfproducts\Plugin\Minicart\Image" sortOrder="1"/>
+    </type>
+    <type name="Magento\ConfigurableProduct\Block\Product\View\Type\Configurable">
+        <plugin name="Dynamic\Productwiserate_product_view" type="DamConsultants\Ahfproducts\Plugin\Product\View\Type\Configurable" sortOrder="1" />
+    </type>
+    <type name="Magento\Catalog\Block\Product\View\Gallery">
+        <plugin name="ahfproducts _gallery_plugin" type="DamConsultants\Ahfproducts\Plugin\Product\GalleryPlugin" sortOrder="1"/>
+    </type>
+    <type name="Magento\Catalog\Block\Product\ImageFactory">
+        <plugin name="ahfproducts _image_plugin" type="DamConsultants\Ahfproducts\Plugin\Catalog\Block\Product\ImageFactoryPlugin" sortOrder="1" />
+    </type>
+</config>

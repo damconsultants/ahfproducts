@@ -1,0 +1,22 @@
+<?php
+
+$product = $block->getProduct();
+
+$document_text = $product->getData('bynder_document');
+
+if (!empty($document_text)) {
+
+    $document_array = json_decode($document_text, true);
+    $html = "";
+    if (!empty($document_array)) {
+        foreach ($document_array as $doc) {
+            //$lable = explode("/", $doc['item_url']);
+            $html .= '<li><a href="' . $doc['item_url'] . '" target="_blank">' . $doc['doc_name'] . '</a></li>';
+        }
+    }
+    ?>
+
+<ul>
+    <?= /* @noEscape */ $html ?>
+</ul>
+<?php } ?>

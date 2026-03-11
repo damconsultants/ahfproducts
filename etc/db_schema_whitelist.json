@@ -1,0 +1,32 @@
+{
+    "bynder_metaproperty": {
+        "column": {
+            "id": true,
+            "property_name": true,
+            "property_id": true,
+            "bynder_property_slug": true,
+            "system_slug": true,
+            "system_name": true,
+            "magento_attribute": true,
+            "attribute_id": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    },
+    "bynder_cron_data": {
+        "column": {
+            "id": true,
+            "sku": true,
+            "bynder_data": true,
+            "bynder_data_type": true,
+            "media_id": true,
+            "remove_for_magento": true,
+            "added_on_cron_compactview": true,
+            "added_date": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    }
+}

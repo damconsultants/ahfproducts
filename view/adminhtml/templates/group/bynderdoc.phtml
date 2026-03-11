@@ -1,0 +1,569 @@
+<?php
+
+$entity_id = $block->getEntityId();
+if (isset($entity_id) && !empty($entity_id)) {
+    $entity_id = $block->getEntityId();
+} else {
+    $entity_id = 0;
+}
+$objectManager = \Magento\Framework\App\ObjectManager::getInstance();
+$storeManager = $objectManager->get(\Magento\Store\Model\StoreManagerInterface::class)
+                    ->getStore()
+                    ->getBaseUrl(\Magento\Framework\UrlInterface::URL_TYPE_MEDIA);
+                    
+$product = $objectManager->get(\Magento\Framework\Registry::class)->registry('current_product'); //get current product
+$product_id = $product->getId();
+$blockj = $block->getLayout()->createBlock(\Magento\ConfigurableProduct\Block\Adminhtml\Product\Steps\Bulk::class) ;
+$formNameEscaped = $blockj->escapeHtmlAttr($blockj->getFormName());
+
+?>
+
+<style>
+    .success-msg-sync,
+    .error-msg-sync {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 3px 3px 3px 3px;
+    }
+
+    .success-msg-sync {
+        color: #270;
+        background-color: #DFF2BF;
+    }
+
+    .error-msg-sync {
+        color: #D8000C;
+        background-color: #FFBABA;
+    }
+
+    table{
+        display: table;
+        border-collapse: separate;
+        box-sizing: border-box;
+        text-indent: initial;
+        border-spacing: 2px;
+        border-color: grey;
+    }
+    .dynamic-row th{
+        color: #303030;
+        font-size: 1.4rem;
+        font-weight: 600;
+        background-color: #efefef;
+        border: 0;
+        border-bottom: 1px solid #fff;
+        padding: 16px;
+        text-align: left;
+        vertical-align: top;
+    }
+    .admin__control-textarea{
+        height: 135px;
+    }
+    tr {
+        display: table-row;
+        vertical-align: inherit;
+        border-color: inherit;
+    }
+    td, th {
+        padding: 16px;
+        width: 500px;
+    }
+    .url{
+        background-color: #fff;
+        border: 1px solid #adadad;
+        border-radius: 1px;
+        box-shadow: none;
+        color: #303030;
+        font-size: 1.4rem;
+        font-weight: 400;
+        height: 40px;
+        line-height: 1.36;
+        padding: -3.4rem 1rem 0.6rem;
+        transition: border-color .1s linear;
+        vertical-align: baseline;
+        width: 100%;
+    }
+    #external_document{
+        background-color: #eb5202;
+        border-color: #eb5202;
+        color: #ffffff;
+        text-shadow: 1px 1px 0 rgb(0 0 0 / 25%);
+    }
+</style>
+<div class="success-msg-sync" style="display:none;"></div>
+<div class="error-msg-sync" style="display:none;"></div>
+<div class="row">
+    <div class="add-video-button-container">
+        <button type="button" name="external_document" id="external_document">AHF Doc</button>
+    </div>
+</div>
+
+<table class="dynamic-rows-doc" id="sortable">
+    <thead>
+        <tr style="background: #efefef;">
+            <th>
+            </th>
+            <th>
+                <span>AHF Document URL</span>
+            </th>
+            <th>
+                <span>Action</span>
+            </th>
+        </tr>
+    </thead>
+    <tbody class="tbody_dynamic_doc"></tbody>
+</table>
+
+<div id="popup-modal-Doc" style="display:none;">
+    <div id="compactViewContainerDoc"></div>
+</div>
+<input type="hidden" id="p_eid" value="<?= $block->escapeHtml($entity_id); ?>">
+<input type="hidden" id="ajax_baseurl" value="<?= $block->escapeUrl($block->getBaseUrl() . 'bynder/index'); ?>">
+<input type="hidden" id="form_keys" value="<?= $block->escapeHtml($block->getFormKey()); ?>">
+
+<script>
+    var drag_img = "<?= $block->escapeHtml($block->getDrag()); ?>";
+    var delete_icon = "<?= $block->escapeHtml($block->getDelete()); ?>";
+    var add_temp_data = '<?= $block->escapeUrl($block->getBaseUrl()."bynder/product/adddocdata") ?>';
+    jQuery(document).on('click','.bynder_url_doc button',function(){
+        var old_selected_bynder_doc = [];
+        
+        /* extract old doc format for new format */
+        var old_bynder_doc = jQuery('textarea[name="product[bynder_document]"]').val();
+        if(old_bynder_doc.trim() != ""){
+            var total_old_format_doc = old_bynder_doc.split(" \n");
+            if(total_old_format_doc.length > 0){
+                jQuery.each(total_old_format_doc,function(kk,val){
+                    if(val.trim() != ""){
+                        var old_item_extract = val.split("?");
+                        var item_url = old_item_extract[0];
+
+                        var doc_details = {
+                            "item_url": item_url,
+                            "item_type" : 'DOCUMENT',
+                        };
+                        old_selected_bynder_doc.push(doc_details);
+                    }
+                });
+            }    
+        }
+        console.log(old_selected_bynder_doc);
+
+        var old_selected_doc = jQuery('textarea[name="product[bynder_document]"]').val();
+        console.log(old_bynder_doc);
+        if(old_selected_doc.trim() != ""){
+            if(((x)=>{try{JSON.parse(x);return true;}catch(e){return false}})(old_selected_doc))
+            {
+                console.log("valide json");
+            }else{
+
+                old_selected_doc = JSON.stringify(old_selected_bynder_doc);
+                console.log(old_selected_doc);
+                console.log("invalide json")
+            }
+            set_selected_images(old_selected_doc);
+        }else{
+            jQuery('.dynamic-rows-doc').find('.tbody_dynamic_doc').html("");
+        }
+    });
+    function set_selected_images(old_selected_images){
+        var selected_images = JSON.parse(old_selected_images);
+        console.log(selected_images);
+        var item_length = selected_images.length;
+        var content = '';
+        jQuery.each(selected_images, function( i, img_data ){
+            var select_item_type = img_data.item_type;
+            var original_item_url = img_data.item_url;
+            
+            content += '<tr style="background: #efefef;"><td>'
+            content += '<img src ="'+drag_img+'"/></td><td>'
+            content += '<input class="url bynder_selected_doc"'+
+                        'type="text" data-index="'+i+'"'+
+                        'id="textboxId_'+i+'"'+
+                        'data-imgType="'+select_item_type+'"'+
+                        'value="'+original_item_url+'" />'
+            content += '</td>'
+            content += '<td><a href="#" class="btnDelete_'+i+'">'+
+                        '<img src ="'+ delete_icon +'" height="25" width="25"/>'+
+                        '</a></td></tr>';
+            jQuery("#sortable").on('click','.btnDelete_'+i,function(){
+                       jQuery(this).closest('tr').remove();
+             });
+            
+        });
+        jQuery('.dynamic-rows-doc').find('.tbody_dynamic_doc').html(content);
+         
+    }
+    jQuery('body').trigger('contentUpdated');
+    require([
+            'jquery',
+            'Magento_Ui/js/modal/modal'
+        ],
+        function($, modal) {
+            
+            jQuery("#external_document").appendTo(
+                jQuery('.product_form_product_form_bynder_doc_modal').find('div .page-actions')
+            );
+            
+            var AjaxUrl = jQuery("#ajax_baseurl").val();
+            var form_keys = jQuery("#form_keys").val();
+            
+            jQuery("body").trigger("contentUpdated");
+            jQuery("div .page-actions #external_document").on("click", function() {
+                BynderCompactView.open({
+                    mode: "MultiSelect",
+                    onSuccess: function(assets, additionalInfo) {
+                        console.log("Successfull Bynder Click...");
+                        var result = assets[0];
+                        var image_path = result.derivatives.webImage;
+                        console.log("Dev : " + image_path);
+
+                        var server_response = bynder_doc_function(assets, additionalInfo);
+                        if (server_response) {
+                            return true;
+                        } else {
+                            return false;
+                        }
+
+                        function bynder_doc_function(assets, a) {
+                            var asset = assets[0];
+                            console.log("asset=>",asset);
+                            var dataset_ids = [];
+                            var dataset_type = [];
+
+                            $.each(assets, function(index, value) {
+                                dataset_ids.push(value.databaseId);
+                                dataset_type.push(value.type);
+                            });
+
+                            var bdomain = localStorage.getItem("cvad");
+                            if (typeof bdomain == "undefined" && bdomain == null) {
+                                alert("Something went wrong. Re-login system and try again...");
+                            }
+
+                            $.ajax({
+                                showLoader: true,
+                                url: AjaxUrl,
+                                type: "POST",
+                                data: {
+                                    databaseId: dataset_ids,
+                                    bdomain: bdomain,
+                                    datasetType: dataset_type,
+                                    form_key: form_keys
+                                },
+                                dataType: "json",
+                            }).done(function(data) {
+                                console.log("=== Call Img ===");
+                                console.log(data);
+                                console.log("=== Call Img End ===");
+                                var total_images = 0;
+                                if (data.status == 2) {
+                                    
+                                    $(".success-msg-sync").hide();
+                                    $(".error-msg-sync").show();
+                                    $(".error-msg-sync").html(data.message);
+                                    setTimeout(function() { 
+                                        
+                                        $('.error-msg-sync').delay(5000).fadeOut('slow');
+                                    }, 5000);
+                                    return false;
+                                } else if (data.status == 0) {
+                                    $(".success-msg-sync").hide();
+                                    $(".error-msg-sync").show();
+                                    $(".error-msg-sync").html(data.message);
+                                    setTimeout(function() { 
+                                        $('.error-msg-sync').delay(5000).fadeOut('slow');
+                                    }, 5000);
+                                } else if (data.status == 1) {
+
+                                    var type_design = "";
+
+                                    type_design += '<div class="main-part bynder-imgbox-div">' +
+                                        '<div class="middle-content">' +
+                                        '<div class="main-one image-boxs" >';
+
+                                    $.each(data.data, function(index, r) {
+                                        $.each(r, function(i, res) {
+                                            
+                                            console.log(res);
+                                            var item_type = res.dataset_type;
+                                            if (res.image_link == null) {
+                                                type_design += '<h5 style="color:red;">You don\'t have access.'+
+                                                                    '<img src="' + res.main_link1 + '">'+
+                                                                    'Please Make It Public from Bynder</h5>';
+                                                return false;
+                                            } else {
+                                                /* need to work for original image path kuldip */
+                                                var download_link = res.download_link;
+                                                var original_img_url = download_link.split("?");
+                                                var dataset_tag = '<img src="' + res.image_link + '">';
+                                                total_images++;
+                                                
+                                                if (item_type == "VIDEO") {
+                                                    dataset_tag = '<video width="100%" controls>'+
+                                                                  '<source src="'+res.image_link+'" type="video/mp4">'+
+                                                                  '<source src="'+res.main_link+'" type="video/ogg">'+
+                                                                  'Your browser does not support HTML video.'+
+                                                                  '</video>';
+                                                }
+
+                                                var dataset_size = '( Size: ' + res.size + ')'
+                                                if (res.size == "0x0") {
+                                                    dataset_size = " ";
+                                                }
+
+                                                if (res.size == "0x0" && item_type == "DOCUMENT") {
+                                                    type_design += '<div class="m-box">' +
+                                                        '<div class="m-img">' +
+                                                        dataset_tag +
+                                                        '</div>' +
+                                                        '<div class="m-content">' +
+                                                        '<input type="checkbox" class="image_types"'+
+                                                        'id="image_type_' + total_images + '"'+
+                                                        'name="image_type_' + index + '"'+
+                                                        'data-itemType="'+item_type+'"'+
+                                                        'value="' + res.type + index + '">' +
+                                                        '<label for="image_type_' + total_images + '">' + 
+                                                            res.type + " " + dataset_size +
+                                                        '</label>' +
+                                                        '</div>' +
+                                                        '</div>';
+                                                }
+                                                if (item_type == "IMAGE" || item_type == "VIDEO") {
+                                                    if (item_type == "IMAGE") {
+                                                        var name_od_the_image = res.type;
+                                                    } else {
+                                                        var name_od_the_image = res.name;
+                                                    }
+                                                    if (res.size != "0x0") {
+                                                        type_design += '<div class="m-box">' +
+                                                            '<div class="m-img">' +
+                                                            dataset_tag +
+                                                            '</div>' +
+                                                            '<div class="m-content">' +
+                                                            '<input type="checkbox" class="image_types"'+
+                                                            'id="image_type_' + total_images + '"'+
+                                                            'name="image_type_' + index + '"'+
+                                                            'data-itemType="'+item_type+'"'+
+                                                            'value="' + res.type + index + '">' +
+                                                            '<label for="image_type_' + total_images + '">' +
+                                                                name_od_the_image + " " + dataset_size +
+                                                            '</label>' +
+                                                            '</div>' +
+                                                            '</div>';
+                                                    } else if (item_type == "VIDEO") {
+                                                        type_design += '<div class="m-box">' +
+                                                            '<div class="m-img">' +
+                                                            dataset_tag +
+                                                            '</div>' +
+                                                            '<div class="m-content">' +
+                                                            '<input type="checkbox" class="image_types"'+
+                                                            'id="image_type_' + total_images + '"'+
+                                                            'name="image_type_' + index + '"'+
+                                                            'data-itemType="'+item_type+'"'+
+                                                            'value="' + res.type + index + '">' +
+                                                            '<label for="image_type_' + total_images + '">'+
+                                                                name_od_the_image + " " + dataset_size +
+                                                            '</label>' +
+                                                            '</div>' +
+                                                            '</div>';
+                                                    }
+                                                }
+
+                                            }
+
+                                        });
+                                    });
+                                    type_design += '</div> </div> </div>';
+
+                                    $("#compactViewContainerDoc").html(type_design);
+                                    var options = {
+                                        type: "popup",
+                                        responsive: true,
+                                        innerScroll: true,
+                                        title: "Select Bynder Document",
+                                        buttons: [{
+                                            text: $.mage.__("Continue"),
+                                            id: "selected_item_btn",
+                                            class: "",
+                                            click: function() {
+
+                                                var selected_types = [];
+                                                $(".image_types").each(function() {
+                                                    var select_val = $(this).val();
+                                                    if ($(this).prop("checked")) {
+                                                        selected_types.push(select_val);
+                                                    }
+                                                });
+
+                                                var doc_url = "";
+                                                var database_doc_array = [];
+                                                var video_url = "";
+                                                var database_videos_array = [];
+                                                if (selected_types.length > 0) {
+                                                    var img_url = "";
+                                                    var img_url_path = "";
+                                                    var database_array = [];
+                                                    var bynder_new_data_array = [];
+                                                    $.each(data.data, function(index, r) {
+                                                        var image_links_test = assets[index].url;
+                                                        $.each(r, function(i, res) {
+                                                            console.log("====");
+                                                            console.log("Get Doc:= " + res.main_link);
+                                                            image_links_test += "&&thumb_link=" + res.image_link + "&&"
+                                                            var type_val = res.type + index;
+                                                            if ($.inArray(type_val, selected_types) != -1) {
+                                            
+                                                                if (res.dataset_type == "DOCUMENT") {
+                                                                    var orignal_doc = res.main_link.split("?");
+                                                                    console.log(orignal_doc);
+                                                                    doc_url += res.main_link + "@@" + res.name + "\n";
+                                                                    database_doc_array.push(
+                                                                        res.main_link + "@@" + res.name
+                                                                    );
+                                                                    var bynder_doc = {
+                                                                        "b_item_url" : orignal_doc[0],
+                                                                        "b_img_type" : res.dataset_type,
+                                                                    };
+                                                                    bynder_new_data_array.push(bynder_doc);
+                                                                    
+                                                                } 
+                                                            }
+                                                        });
+                                                    });
+
+                                                    
+                                                    console.log(database_array);
+                                                    add_bynder_doc_item(bynder_new_data_array);
+                    
+                                                    this.closeModal();
+                                                } else {
+                                                    $(".success-msg-sync").hide();
+                                                    $(".error-msg-sync").show();
+                                                    $(".error-msg-sync").html("Sorry, you not selected any type");
+                                                    setTimeout(function() { 
+                                                        $('.error-msg-sync').delay(5000).fadeOut('slow');
+                                                    }, 5000);
+                                                }
+                                            }
+                                        }]
+                                    };
+                                    var popup = modal(options, $("#popup-modal-Doc"));
+                                    $("#popup-modal-Doc").modal("openModal");
+                                    return true;
+                                } else {
+                                    
+                                    $(".success-msg-sync").hide();
+                                    $(".error-msg-sync").show();
+                                    $(".error-msg-sync").html(data.message);
+                                    setTimeout(function() {
+                                        $('.error-msg-sync').delay(5000).fadeOut('slow');
+                                    }, 5000);
+                                    return false;
+                                }
+                            });
+                        }
+                    }
+                });
+
+            });
+            
+            function add_bynder_doc_item(data_item) {
+                
+                var old_selected_length = jQuery('.tbody_dynamic_doc tr').length;
+                let item_length = data_item.length;
+                console.log(data_item);
+                console.log(item_length);
+                
+                var i = 0;
+                if(old_selected_length > 0){
+                    i = old_selected_length;
+                    item_length = old_selected_length + item_length;
+                }
+                
+                var k = 0;
+                var content = "";
+                for(i;i < item_length; i++)
+                {
+                    console.log(i);
+                    var input_field_val = data_item.shift();
+                    var item_v_url = input_field_val.b_item_url;
+                    var select_item_type = input_field_val.b_img_type;
+
+                    console.log(input_field_val);
+                    content = '<tr style="background: #efefef;" data-index="'+i+'"><td>'
+                    content += '<img src ="'+drag_img+'"/></td><td>'
+                    content += '<input class="url bynder_selected_doc"'+
+                                'type="text" data-index="'+i+'"'+
+                                'data-imgType="'+select_item_type+'"'+
+                                'id="textboxId_'+i+'"'+
+                                'value="'+item_v_url+'" /></td>'
+                    content += '<td><a href="#" class="btnDelete_'+i+'">'+
+                                '<img src ="'+delete_icon+'" height="25" width="25"/>'+
+                                '</a></td></tr>';
+                    jQuery("#sortable").on('click','.btnDelete_'+i,function(){
+                           jQuery(this).closest('tr').remove();
+                     });
+                    jQuery('.dynamic-rows-doc').find('.tbody_dynamic_doc').append(content);
+                }
+            }
+            jQuery(".save_doc").on('click',function(){
+                
+                var all_selected_doc = [];
+                jQuery('.bynder_selected_doc').each(function(i){
+
+                    var select_doc = jQuery(this).val();
+                    console.log(select_doc);
+                    var item_index = jQuery(this).attr("data-index");
+                    var item_doc_type = jQuery(this).attr("data-imgType");
+                    var doc_details = {
+                        "item_url":select_doc,
+                        "item_type" : item_doc_type,    
+                    };
+                    console.log(doc_details);
+                    all_selected_doc.push(doc_details);
+                });
+                if(all_selected_doc != ''){
+                    var myJsonString = JSON.stringify(all_selected_doc);
+                } else {
+                    var myJsonString = "";
+                }
+                jQuery('textarea[name="product[bynder_document]"]').val(myJsonString);
+                //document.cookie = "bynder_doc=" + myJsonString + "; path=/;";
+                var doc_coockie_id = 0;
+                try{
+                    doc_coockie_id = Cookies.get('doc_coockie_id');
+                }catch(err){
+                    document.cookie = "doc_coockie_id=" + coockie_id + "; path=/;";
+                }
+                var product_id = '<?= $block->escapeHtml($product_id); ?>';
+                $.ajax({
+                    url: add_temp_data,
+                    showLoader: true,
+                    data: {
+                        product_id: product_id,
+                        doc:myJsonString,
+                        doc_coockie_id:doc_coockie_id
+                    },
+                    success: function (res) {
+                    },
+                });
+            })
+
+            jQuery("#sortable tbody").sortable({
+                cursor: "move",
+                placeholder: "sortable-placeholder",
+                helper: function(e, tr)
+                {
+                    var $originals = tr.children();
+                    var $helper = tr.clone();
+                    $helper.children().each(function(index)
+                    {
+                   
+                    jQuery(this).width($originals.eq(index).width());
+                    });
+                    return $helper;
+                }
+            }).disableSelection();
+
+        });
+</script>

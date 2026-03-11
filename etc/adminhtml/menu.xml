@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+   <menu>
+       <add id="DamConsultants_Ahfproducts::menu"
+           title="AHF Configuration" module="DamConsultants_Ahfproducts"
+           sortOrder="10"
+           resource="DamConsultants_Ahfproducts::menu"
+           />
+           <!-- START: new node -->
+		<add id="DamConsultants_Ahfproducts::menu_item5"
+           title="Meta properties setting" module="DamConsultants_Ahfproducts"
+           sortOrder="10" parent="DamConsultants_Ahfproducts::menu"
+           resource="DamConsultants_Ahfproducts::menu_item5"
+           />
+		   
+		<add id="DamConsultants_Ahfproducts::menu_item1"
+           title="AHF MetaProperty" module="DamConsultants_Ahfproducts"
+           sortOrder="10" parent="DamConsultants_Ahfproducts::menu_item5"
+           action="bynder/index/metaproperty"
+           resource="DamConsultants_Ahfproducts::menu_item1"
+           />
+		  
+		<add id="DamConsultants_Ahfproducts::menu_item6"
+           title="Cron Log" module="DamConsultants_Ahfproducts"
+           sortOrder="10" parent="DamConsultants_Ahfproducts::menu"
+           resource="DamConsultants_Ahfproducts::menu_item6"
+           />
+       <add id="DamConsultants_Ahfproducts::menu_item"
+           title="Cron Action Log" module="DamConsultants_Ahfproducts"
+           sortOrder="10" parent="DamConsultants_Ahfproducts::menu_item6"
+           action="bynder/index/grid"
+           resource="DamConsultants_Ahfproducts::menu_item"
+           />
+		<add id="DamConsultants_Ahfproducts::menu_item3"
+           title="Replace Cron Action Log" module="DamConsultants_Ahfproducts"
+           sortOrder="10" parent="DamConsultants_Ahfproducts::menu_item6"
+           action="bynder/index/replacecrongrid"
+           resource="DamConsultants_Ahfproducts::menu_item3"
+           />
+           
+       <!-- END:   new node -->
+       <!-- START: new node -->
+	   
+	   <add id="DamConsultants_Ahfproducts::menu_item7"
+           title="Manual sync Log" module="DamConsultants_Ahfproducts"
+           sortOrder="10" parent="DamConsultants_Ahfproducts::menu"
+           resource="DamConsultants_Ahfproducts::menu_item6"
+           />
+       <add id="DamConsultants_Ahfproducts::menu_item2"
+           title="Synchronization Log" module="DamConsultants_Ahfproducts"
+           sortOrder="10" parent="DamConsultants_Ahfproducts::menu_item7"
+           action="bynder/index/sync"
+           resource="DamConsultants_Ahfproducts::menu_item2"
+           />
+        <add id="DamConsultants_Ahfproducts::menu_item9"
+           title="Check Sku Log" module="DamConsultants_Ahfproducts"
+           sortOrder="10" parent="DamConsultants_Ahfproducts::menu_item7"
+           action="bynder/index/sku"
+           resource="DamConsultants_Ahfproducts::menu_item9"
+           />
+       <!-- END:   new node -->
+        <!-- START: new node -->
+       
+		
+       <!-- END:   new node -->
+	    <add id="DamConsultants_Ahfproducts::menu_item8"
+           title="Configuration Settings" module="DamConsultants_Ahfproducts"
+           sortOrder="10" parent="DamConsultants_Ahfproducts::menu"
+           resource="DamConsultants_Ahfproducts::menu_item6"
+           />
+       <add id="DamConsultants_Ahfproducts::settings" title="Configuration" module="DamConsultants_Ahfproducts" sortOrder="10" resource="Magento_Backend::content" parent="DamConsultants_Ahfproducts::menu_item8" action="adminhtml/system_config/edit/section/bynderconfig"/>
+   </menu>
+</config>

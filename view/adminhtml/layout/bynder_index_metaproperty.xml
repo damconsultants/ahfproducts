@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <update handle="bynder"/>
+	<head>
+        <title>MetaProperty</title>
+    </head>
+	<body>
+		<referenceContainer name="content">
+          <block class="DamConsultants\Ahfproducts\Block\Adminhtml\Metaproperty\Index"  name="damconsultants.metaproperty.default" template="DamConsultants_Ahfproducts::metaproperty/default.phtml" />
+        </referenceContainer>
+    </body>
+</page>

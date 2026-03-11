@@ -1,0 +1,20 @@
+<?xml version="1.0" ?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+	<group id="default">
+		<job instance="DamConsultants\Ahfproducts\Cron\FeatchNullDataToMagento" method="execute" name="damConsultants_bynder_fetach_sku_null_for_magento">
+			<config_path>crontab/default/jobs/damConsultants_bynder_fetach_sku_null_for_magento/schedule/cron_expr</config_path>  
+		</job>
+		<job instance="DamConsultants\Ahfproducts\Cron\AutoAddFromMagento" method="execute" name="damConsultants_bynder_auto_sku_add_magento">
+			<config_path>crontab/default/jobs/damConsultants_bynder_auto_sku_add_magento/schedule/cron_expr</config_path>
+		</job>
+		<job instance="DamConsultants\Ahfproducts\Cron\DeleteValue" method="execute" name="damConsultants_bynder_delete_cron">
+			<config_path>crontab/default/jobs/damConsultants_bynder_delete_cron/schedule/cron_expr</config_path>
+		</job>
+		<job instance="DamConsultants\Ahfproducts\Cron\ScriptRunOneTimeForAddMediaIdinTable" method="execute" name="damConsultants_bynder_ScriptRunOneTimeForAddMediaIdinTable">
+			<schedule>*/10 * * * *</schedule>
+		</job>
+		<job instance="DamConsultants\Ahfproducts\Cron\UpdateAllSku" method="execute" name="damConsultants_bynder_update_sku_all">
+			<schedule>*/7 * * * *</schedule>
+		</job>
+	</group> 
+</config>

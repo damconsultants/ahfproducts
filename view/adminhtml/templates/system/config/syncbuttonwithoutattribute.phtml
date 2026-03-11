@@ -1,0 +1,62 @@
+<?= $block->getButtonHtml(); ?>
+<script>
+    require([
+        'jquery',
+        'prototype'
+    ], function($) {
+
+        $('#bt_id_4').click(function() {
+            var product_sku_1 = $('textarea#byndersyncdatawithout_bynder_sync_data_without_select_sku_1').val();
+            var params = {
+                product_sku_1: product_sku_1
+            };
+            new Ajax.Request('<?= /* @noEscape */ $block->getAjaxUrl() ?>', {
+                parameters: params,
+                loaderArea: true,
+                asynchronous: true,
+                onCreate: function() {
+                    $('#byndersyncdatawithout_bynder_sync_data_without_select_sku_1').text('');
+                },
+                onSuccess: function(transport) {
+                    var resultText = '';
+                    if (transport.status == 200) {
+                        resultText = transport.responseJSON.message;
+                        $(".success-msg").show();
+                        $(".success-msg").html(resultText);
+                        setTimeout(function() {
+                            $('.success-msg').delay(5000).fadeOut('slow');
+                        }, 5000);
+                    } else {
+                        var response = JSON.parse(transport.responseText);
+                        resultText = transport.responseJSON.message
+                        $(".error-msg").show();
+                        $(".error-msg").html(resultText);
+                        setTimeout(function() {
+                            $('.error-msg').delay(5000).fadeOut('slow');
+                        }, 5000);
+                    }
+                   
+
+                }
+            });
+        });
+    });
+</script>
+
+<style>
+    .info-msg,
+    .success-msg,
+    .warning-msg,
+    .error-msg {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 3px 3px 3px 3px;
+    }
+
+    .success-msg {
+        color: #270;
+        background-color: #DFF2BF;
+    }
+</style>
+<div class="success-msg" style="display:none;"></div>
+<div class="error-msg" style="display:none;"></div>

@@ -1,0 +1,71 @@
+<?= $block->getButtonHtml(); ?>
+<script>
+    require([
+        'jquery',
+        'prototype'
+    ], function($) {
+
+        $('#bt_id_1').click(function() {
+            var product_sku = $('textarea#byndersyncdata_bynder_sync_data_sku').val();
+            var select_attribute = $('select#byndersyncdata_bynder_sync_data_select').val();
+            var params = {
+                product_sku: product_sku,
+                select_attribute: select_attribute
+            };
+            new Ajax.Request('<?= $block->escapeUrl($block->getAjaxUrl()); ?>', {
+                parameters: params,
+                loaderArea: true,
+                asynchronous: true,
+                
+                beforeSend: function() {
+                    $('body').trigger('processStart');
+                },
+                onSuccess: function(transport) {
+                    
+                    var resultText = '';
+                    if (transport.responseJSON.status == 1) {
+                        resultText = transport.statusText;
+                        $('#byndersyncdata_bynder_sync_data_sku').text('');
+                        $(".success-msg-sync").show();
+                        $(".error-msg-sync").hide();
+                        $(".success-msg-sync").html(transport.responseJSON.message);
+                        setTimeout(function() { 
+                            $('.success-msg-sync').delay(5000).fadeOut('slow');
+                        }, 5000);
+                    } else {
+                        resultText = transport.responseJSON.message
+                        $('#byndersyncdata_bynder_sync_data_sku').text('');
+                        $(".error-msg-sync").show();
+                        $(".success-msg-sync").hide();
+                        $(".error-msg-sync").html(resultText);
+                        setTimeout(function() {
+                            $('.error-msg-sync').delay(5000).fadeOut('slow');
+                        }, 5000);
+                    }
+                }
+            });
+        });
+    });
+</script>
+
+
+<style>
+    .success-msg-sync,
+    .error-msg-sync {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 3px 3px 3px 3px;
+    }
+
+    .success-msg-sync {
+        color: #270;
+        background-color: #DFF2BF;
+    }
+
+    .error-msg-sync {
+        color: #D8000C;
+        background-color: #FFBABA;
+    }
+</style>
+<div class="success-msg-sync" style="display:none;"></div>
+<div class="error-msg-sync" style="display:none;"></div>

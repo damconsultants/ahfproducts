@@ -1,0 +1,235 @@
+<?xml version="1.0"?>
+<listing xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <argument name="data" xsi:type="array">
+        <item name="js_config" xsi:type="array">
+            <item name="provider" xsi:type="string">bynder_index_sync.bynder_index_sync_data_source</item>
+            <item name="deps" xsi:type="string">bynder_index_sync.bynder_index_sync_data_source</item>
+        </item>
+        <item name="spinner" xsi:type="string">spinner_columns</item>
+    </argument>
+    <dataSource name="nameOfDataSource">
+        <argument name="dataProvider" xsi:type="configurableObject">
+            <argument name="class" xsi:type="string">DamConsultants\Ahfproducts\Ui\DataProvider\Product\SyncDataProvider</argument>
+            <argument name="name" xsi:type="string">bynder_index_sync_data_source</argument>
+            <argument name="primaryFieldName" xsi:type="string">id</argument>
+            <argument name="requestFieldName" xsi:type="string">id</argument>
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="component" xsi:type="string">Magento_Ui/js/grid/provider</item>
+                    <item name="update_url" xsi:type="url" path="mui/index/render"/>
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="indexField" xsi:type="string">id</item>
+                    </item>
+                </item>
+            </argument>
+        </argument>
+    </dataSource>
+    <container name="listing_top">
+        <argument name="data" xsi:type="array">
+            <item name="config" xsi:type="array">
+                <item name="template" xsi:type="string">ui/grid/toolbar</item>
+                 <item name="sticky" xsi:type="boolean">true</item>
+            </item>
+        </argument>
+        <massaction name="listing_massaction">
+            <argument name="data" xsi:type="array">
+                <item name="data" xsi:type="array">
+                <item name="selectProvider" xsi:type="string">bynder_index_sync.bynder_index_sync.bynder_index_sync_columns.ids</item>
+                <item name="displayArea" xsi:type="string">bottom</item>
+                <item name="indexField" xsi:type="string">id</item>
+                </item>
+            </argument>
+            <action name="delete">
+                <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="type" xsi:type="string">delete</item>
+                    <item name="label" xsi:type="string" translate="true">Delete</item>
+                    <item name="url" xsi:type="url" path="bynder/index/massdeletesyncdata"/>
+                    <item name="confirm" xsi:type="array">
+                        <item name="title" xsi:type="string" translate="true">Delete Data?</item>
+                        <item name="message" xsi:type="string" translate="true">Are you sure you want to delete the selected Data?</item>
+                    </item>
+                </item>
+                </argument>
+            </action>
+        </massaction>
+        <bookmark name="bookmarks">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="component" xsi:type="string">Magento_Ui/js/grid/controls/bookmarks/bookmarks</item>
+                    <item name="displayArea" xsi:type="string">dataGridActions</item>
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="saveUrl" xsi:type="url" path="mui/bookmark/save"/>
+                        <item name="deleteUrl" xsi:type="url" path="mui/bookmark/delete"/>
+                        <item name="namespace" xsi:type="string">bynder_index_sync</item>
+                    </item>
+                </item>
+            </argument>
+        </bookmark>
+        <container name="columns_controls">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="columnsData" xsi:type="array">
+                        <item name="provider" xsi:type="string">bynder_index_sync.bynder_index_sync.spinner_columns</item>
+                    </item>
+                    <item name="component" xsi:type="string">Magento_Ui/js/grid/controls/columns</item>
+                    <item name="displayArea" xsi:type="string">dataGridActions</item>
+                </item>
+            </argument>
+        </container>
+       
+        <filters name="listing_filters">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="displayArea" xsi:type="string">dataGridFilters</item>
+                    <item name="dataScope" xsi:type="string">filters</item>
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="provider" xsi:type="string">bynder_index_sync.bynder_index_sync.listing_top.bookmarks</item>
+                        <item name="namespace" xsi:type="string">current.filters</item>
+                    </item>
+                    <item name="childDefaults" xsi:type="array">
+                        <item name="provider" xsi:type="string">bynder_index_sync.bynder_index_sync.listing_top.listing_filters</item>
+                        <item name="imports" xsi:type="array">
+                            <item name="visible" xsi:type="string">bynder_index_sync.bynder_index_sync.listing_top.bookmarks:current.columns.${ $.index }.visible</item>
+                        </item>
+                    </item>
+                </item>
+            </argument>
+            <filterRange name="Id">
+                <argument name="data" xsi:type="array">
+                    <item name="config" xsi:type="array">
+                        <item name="dataScope" xsi:type="string">id</item>
+                        <item name="label" xsi:type="string" translate="true">ID</item>
+                        <item name="childDefaults" xsi:type="array">
+                            <item name="provider" xsi:type="string">bynder_index_sync.bynder_index_sync.listing_top.listing_filters</item>
+                        </item>
+                    </item>
+                </argument>
+                <filterInput name="from">
+                    <argument name="data" xsi:type="array">
+                        <item name="config" xsi:type="array">
+                            <item name="dataScope" xsi:type="string">from</item>
+                            <item name="label" xsi:type="string" translate="true">from</item>
+                            <item name="placeholder" xsi:type="string" translate="true">From</item>
+                        </item>
+                    </argument>
+                </filterInput>
+                <filterInput name="to">
+                    <argument name="data" xsi:type="array">
+                        <item name="config" xsi:type="array">
+                            <item name="dataScope" xsi:type="string">to</item>
+                            <item name="label" xsi:type="string" translate="true">to</item>
+                            <item name="placeholder" xsi:type="string" translate="true">To</item>
+                        </item>
+                    </argument>
+                </filterInput>
+            </filterRange>
+        </filters>
+        <paging name="listing_paging">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="provider" xsi:type="string">bynder_index_sync.bynder_index_sync.listing_top.bookmarks</item>
+                        <item name="namespace" xsi:type="string">current.paging</item>
+                    </item>
+                    <item name="selectProvider" xsi:type="string">bynder_index_sync.bynder_index_sync.spinner_columns.ids</item>
+                    <item name="displayArea" xsi:type="string">bottom</item>
+                </item>
+            </argument>
+        </paging>
+    </container>
+    <columns name="spinner_columns">
+        <selectionsColumn name="ids">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="resizeEnabled" xsi:type="boolean">false</item>
+                    <item name="resizeDefaultWidth" xsi:type="string">55</item>
+                    <item name="indexField" xsi:type="string">id</item>
+                </item>
+            </argument>
+        </selectionsColumn>
+        <column name="id">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">textRange</item>
+                    <item name="sorting" xsi:type="string">desc</item>
+                    <item name="label" xsi:type="string" translate="true">ID</item>
+                </item>
+            </argument>
+        </column>
+        <column name="sku">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Sku</item>
+                </item>
+            </argument>
+        </column>
+         <column name="lable" class="DamConsultants\Ahfproducts\Ui\Component\Listing\Column\Closed">
+			<argument name="data" xsi:type="array">
+                <item name="options" xsi:type="object">DamConsultants\Ahfproducts\Model\Config\Source\Status</item>
+				<item name="config" xsi:type="array">
+					<item name="filter" xsi:type="string">select</item>
+                    <item name="dataType" xsi:type="string">select</item>
+					<item name="bodyTmpl" xsi:type="string">ui/grid/cells/html</item>
+					<item name="label" xsi:type="string" translate="true">Status</item>
+				</item>
+			</argument>
+		</column>
+        <column name="bynder_sync_data">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">AHF Synchronization Data</item>
+                </item>
+            </argument>
+        </column>
+        <column name="bynder_data_type" class="DamConsultants\Ahfproducts\Ui\Component\Listing\Column\DataType">
+			<argument name="data" xsi:type="array">
+                <item name="options" xsi:type="object">DamConsultants\Ahfproducts\Model\Config\Source\DataType</item>
+				<item name="config" xsi:type="array">
+					<item name="filter" xsi:type="string">select</item>
+                    <item name="dataType" xsi:type="string">select</item>
+					<item name="bodyTmpl" xsi:type="string">ui/grid/cells/html</item>
+					<item name="label" xsi:type="string" translate="true">Data Type</item>
+				</item>
+			</argument>
+		</column>
+        <column name="created_at" class="Magento\Ui\Component\Listing\Columns\Date">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">dateRange</item>
+                    <item name="component" xsi:type="string">Magento_Ui/js/grid/columns/date</item>
+                    <item name="dataType" xsi:type="string">date</item>
+                    <item name="label" xsi:type="string" translate="true">Created</item>
+                </item>
+            </argument>
+        </column>
+        <column name="updated_at" class="Magento\Ui\Component\Listing\Columns\Date">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">dateRange</item>
+                    <item name="component" xsi:type="string">Magento_Ui/js/grid/columns/date</item>
+                    <item name="dataType" xsi:type="string">date</item>
+                    <item name="label" xsi:type="string" translate="true">Modified</item>
+                </item>
+            </argument>
+        </column>
+        <actionsColumn name="delete_action" class="DamConsultants\Ahfproducts\Ui\Component\Listing\Column\DeleteAction">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="indexField" xsi:type="string">id</item>
+                    <item name="viewUrlPath" xsi:type="string">bynder/index/deletesyncdata</item>
+                    <item name="urlEntityParamName" xsi:type="string">id</item>
+                    <item name="confirm" xsi:type="array">
+                        <item name="title" xsi:type="string" translate="true">Delete Data?</item>
+                        <item name="message" xsi:type="string" translate="true">Are you sure you want to delete the selected Data?</item>
+                    </item>
+                </item>
+            </argument>
+            <settings>
+                <label translate="true">Delete</label>
+            </settings>
+        </actionsColumn>
+    </columns>
+</listing>

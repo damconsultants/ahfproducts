@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" layout="admin-1column" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <css src="DamConsultants_Ahfproducts::css/bynder.css"/>
+        <css src="DamConsultants_Ahfproducts::css/select2.min.css"/>
+        <script src="DamConsultants_Ahfproducts::js/bynder-compactview-2-latest.js"/>
+        <script src="DamConsultants_Ahfproducts::js/byner-custom.js"/>
+        <script src="DamConsultants_Ahfproducts::js/bynder-import.js"/>
+    </head>
+</page>

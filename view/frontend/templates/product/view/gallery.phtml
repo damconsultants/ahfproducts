@@ -1,0 +1,125 @@
+<?php
+/**
+ * Copyright © Magento, Inc. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+/**
+ * Product media data template
+ *
+ * @var $block \Magento\Catalog\Block\Product\View\Gallery
+ */
+?>
+
+<?php
+$bynder_image = $block->getProduct()->getBynderMultiImg();
+$type = [];
+if (!empty($bynder_image)) {
+    $json_decode = json_decode($bynder_image, true);
+    foreach ($json_decode as $data_image) {
+        $type[] = $data_image['item_type'];
+    }
+}
+$images = $block->getGalleryImages()->getItems();
+$mainImage = current(array_filter($images, function ($img) use ($block) {
+    return $block->isMainImage($img);
+}));
+
+if (!empty($images) && empty($mainImage)) {
+    $mainImage = $block->getGalleryImages()->getFirstItem();
+}
+
+$helper = $block->getData('imageHelper');
+$mainImageData = $mainImage ?
+    $mainImage->getData('medium_image_url') :
+    $helper->getDefaultPlaceholderUrl('image');
+
+
+$img_url = $mainImageData;
+$one_img = $block->getSingleImage();
+if (!empty($one_img) && $one_img != '0') {
+    $img_url = $one_img;
+}
+?>
+
+<div class="gallery-placeholder _block-content-loading" data-gallery-role="gallery-placeholder">
+    <img alt="main product photo" class="gallery-placeholder__image"
+        src="<?= /* @noEscape */ $img_url /* $mainImageData */ ?>" />
+</div>
+
+
+<script type="text/x-magento-init">
+    {
+        "[data-gallery-role=gallery-placeholder]": {
+            "mage/gallery/gallery": {
+                "mixins":["magnifier/magnify"],
+                "magnifierOpts": <?= /* @noEscape */ $block->getMagnifier() ?>,
+                "data": <?= /* @noEscape */ $block->getGalleryImagesJson() ?>,
+                "options": <?= /* @noEscape */ $block->getGalleryOptions()->getOptionsJson() ?>,
+                "fullscreen": <?= /* @noEscape */ $block->getGalleryOptions()->getFSOptionsJson() ?>,
+                "breakpoints": <?= /* @noEscape */ $block->getBreakpoints() ?>
+            }
+        }
+    }
+</script>
+<style>
+    #video-tag {
+        margin: 50px;
+        padding: 100px 0px 152px;
+        height: 450px;
+    }
+
+    .video_control {
+        opacity: 0.5;
+    }
+</style>
+<script>
+    require(['jquery'], function ($) {
+        $(document).ready(function () {
+            $(document).on('gallery:loaded', function () {
+                var $fotorama = $('div.gallery-placeholder > div.fotorama');
+                var fotorama = $fotorama.data('fotorama');
+                var data_array = '<?= json_encode($type); ?>';
+                var parsedTest = JSON.parse(data_array);
+
+                if ($.inArray("VIDEO", parsedTest) >= 0) {
+                    $fotorama.on('fotorama:load', function (e, fotorama, extra) {
+
+                        if (extra.frame.type === 'iframe') {
+							setTimeout(function () {
+								jQuery('.fotorama__nav__frame img[src="' + extra.frame.thumb + '"]')
+									.closest('.fotorama__nav__frame')
+									.addClass('video-thumb-icon');
+							}, 100); 
+                            extra.frame.$stageFrame.html(
+                                '<div class="fotorama-video-container video-unplayed video_control">' +
+                                '<video id="video-tag" width="75%"><source src="' + extra.frame.src +
+                                '" type="video/mp4"></video></div>'
+                            );
+                        }
+                    });
+
+                    var fotorama = $('.fotorama').fotorama({ allowfullscreen: false }).data('fotorama');
+                    fotorama.requestFullScreen();
+                    var $fotoramaDiv = $('.fotorama').fotorama();
+                    $fotoramaDiv.data('fotorama').show(0);
+
+                    $(".fotorama__arr, .fotorama__nav__shaft").click(function () {
+                        var videoTag = $(".fotorama__active #video-tag").get(0);
+                        if (videoTag) {
+                            videoTag.pause();
+                            videoTag.currentTime = 0;
+                        }
+                        $('.fotorama__active .video_control').addClass("fotorama-video-container").css("opacity", "0.5");
+                        $('.fotorama__active #video-tag').attr('controls', false);
+                    });
+
+                    $(document).on("click", ".video_control", function () {
+                        $('.fotorama__active .video_control').removeClass("fotorama-video-container").css("opacity", "1");
+                        $('.fotorama__active #video-tag').attr('controls', true).get(0).play();
+                    });
+                }
+            });
+        });
+    });
+
+</script>

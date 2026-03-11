@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+   <table name="bynder_metaproperty" resource="default" engine="innodb" comment="Bynder MetaProperty">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="property_name" nullable="true"  comment="property_name" />
+      <column xsi:type="text" name="property_id" nullable="true"  comment="property_id" />
+      <column xsi:type="text" name="magento_attribute" nullable="true"  comment="magento_attribute" />
+      <column xsi:type="text" name="attribute_id" nullable="true"  comment="attribute_id" />
+      <column xsi:type="text" name="bynder_property_slug" nullable="true"  comment="Bynder Property Slug" />
+      <column xsi:type="text" name="system_slug" nullable="true"  comment="System Slug" />
+      <column xsi:type="text" name="system_name" nullable="true"  comment="System Name" />
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="bynder_cron_data" resource="default" engine="innodb" comment="Bynder Cron Data Logs">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+       <column xsi:type="text" name="sku" nullable="true"  comment="Product sku" />
+      <column xsi:type="text" name="bynder_data" nullable="true"  comment="bynder data sync. image, doc, video" />
+      <column xsi:type="text" name="bynder_data_type" nullable="true"  comment="1= Image , 2= doc,3= video" />
+      <column xsi:type="text" name="media_id" nullable="true"  comment="Bynder Data Media id " />
+      <column xsi:type="text" name="remove_for_magento" nullable="true"  comment="1= not remove for magento , 0= remove for magento,2= change on bynder" />
+      <column xsi:type="text" name="added_on_cron_compactview" nullable="true"  comment="1 = added on cron , 2 = added on compactview" />
+      <column xsi:type="int" name="lable" nullable="false" comment="Label" />
+      <column name="created_at" nullable="false" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="false"/>
+      <column name="updated_at" nullable="true" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="true"/>
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="bynder_config_sync_data" resource="default" engine="innodb" comment="Bynder Sync Data Logs">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="sku" nullable="true"  comment="Product sku" />
+      <column xsi:type="text" name="bynder_sync_data" nullable="true"  comment="bynder data sync. image, doc, video" />
+      <column xsi:type="text" name="bynder_data_type" nullable="true"  comment="1= Image , 2= doc,3= video" />
+      <column xsi:type="int" name="lable" nullable="false" comment="Label" />
+      <column name="created_at" nullable="false" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="false"/>
+      <column name="updated_at" nullable="true" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="true"/>
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="bynder_temp_data" resource="default" engine="innodb" comment="Bynder Temp Data">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="value" nullable="true"  comment="Value" />
+      <column xsi:type="int" name="product_id" nullable="true"  comment="Product Id" />
+      <column xsi:type="datetime" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
+      <column xsi:type="datetime" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated At"/>
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="bynder_default_metaproperty" resource="default" engine="innodb" comment="Bynder Default MetaProperty">
+       <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="property_name" nullable="true"  comment="property_name" />
+      <column xsi:type="text" name="property_id" nullable="true"  comment="property_id" />
+      <column xsi:type="text" name="bynder_property_slug" nullable="true"  comment="Bynder Property Slug" />
+      <column xsi:type="text" name="property_search_query" nullable="true"  comment="property search query" />
+      <column xsi:type="text" name="possible_values" nullable="true"  comment="possible values" />
+      <column name="created_at" nullable="false" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="false"/>
+      <column xsi:type="int" name="status" nullable="true"  comment="status" />
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="bynder_temp_doc_data" resource="default" engine="innodb" comment="Bynder Temp Document Data">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="value" nullable="true"  comment="Value" />
+      <column xsi:type="int" name="product_id" nullable="true"  comment="Product Id" />
+      <column xsi:type="datetime" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
+      <column xsi:type="datetime" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated At"/>
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="bynder_cron_replace_data" resource="default" engine="innodb" comment="Bynder Cron Replace Logs">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="sku" nullable="true"  comment="Product sku" />
+      <column xsi:type="text" name="bynder_data" nullable="true"  comment="bynder data sync. image, doc, video" />
+      <column xsi:type="text" name="media_id" nullable="true"  comment="Bynder Data Media id " />
+      <column xsi:type="text" name="bynder_data_type" nullable="true"  comment="1= Image , 2= doc,3= video" />
+      <column name="created_at" nullable="false" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="false"/>
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="bynder_delete_data" resource="default" engine="innodb" comment="Bynder Delete Data">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="sku" nullable="true"  comment="Product sku" />
+      <column xsi:type="text" name="media_id" nullable="true"  comment="Bynder Data Media id " />
+      <column xsi:type="datetime" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
+      <column xsi:type="datetime" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated At"/>
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="media_data" resource="default" engine="innodb" comment="Media Data">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="sku" nullable="true"  comment="Product sku" />
+      <column xsi:type="text" name="media_id" nullable="true"  comment="Bynder Data Media id " />
+	  <column xsi:type="int" name="status" nullable="false" comment="Status" />
+      <column xsi:type="datetime" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
+      <column xsi:type="datetime" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated At"/>
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="api_response_media_data" resource="default" engine="innodb" comment="Media Data">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="media_id" nullable="true"  comment="Bynder Data Media id" />
+      <column xsi:type="datetime" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
+      <column xsi:type="datetime" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated At"/>
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+   <table name="bynder_update_sku" resource="default" engine="innodb" comment="Bynder Update Sku">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="text" name="sku" nullable="true"  comment="Product sku" />
+      <column xsi:type="text" name="select_attribute" nullable="true"  comment="bynder data sync. image, doc, video" />
+      <column xsi:type="text" name="select_store" nullable="true"  comment="Store Id " />
+      <column xsi:type="text" name="status" nullable="true"  comment="Status Pendding processed" />
+      <column xsi:type="text" name="token" nullable="true"  comment="Token" />
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+   </table>
+</schema>
