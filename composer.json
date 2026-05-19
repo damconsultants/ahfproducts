@@ -1,6 +1,6 @@
 {
     "name": "damconsultants/ahfproducts",
-    "description": "DamConsultants Ahfproducts for Magento 2",
+    "description": "DamConsultants AHF-Products for Magento 2",
     "type": "magento2-module",
     "authors": [
         {
@@ -8,7 +8,7 @@
             "email": "sean@thedamconsultants.com"
         }
     ],
-    "version": "1.0.1",
+    "version": "1.0.2",
     "license": "MIT",
     "autoload": {
         "psr-4": {
@@ -19,7 +19,7 @@
         ]
     },
     "require": {
-        "php": "~7.3.0|~7.4.0|~8.0.0|~8.1.0|~8.2.0|~8.3.0",
+        "php": "~7.3.0|~7.4.0|~8.0.0|~8.1.0|~8.2.0|~8.3.0|~8.4.0|~8.5.0",
         "composer": "^2.2"
     },
     "repositories": [
