@@ -100,14 +100,22 @@ class Index extends \Magento\Framework\App\Action\Action
                         ];
                         $api_response = $this->b_datahelper->getDerivativesImage($bynder_auth);
                         $api_response = json_decode($api_response, true);
-                        if (isset($api_response["status"]) && $api_response["status"] == 1) {
-                            $res_array["status"] = $api_response["status"];
-                            $res_array["data"] = $api_response["data"];
-                            $res_array["message"] = $api_response["message"];
-                            $res_array["bynder_auth"] = $bynder_auth;
+
+                        if (is_array($api_response)) {
+
+                            if (isset($api_response["status"]) && $api_response["status"] == 1) {
+
+                                $res_array["status"] = $api_response["status"];
+                                $res_array["data"] = $api_response["data"] ?? [];
+                                $res_array["message"] = $api_response["message"] ?? "Success";
+                                $res_array["bynder_auth"] = $bynder_auth;
+                            } else {
+                                $res_array["data"] = $api_response;
+                                $res_array["message"] = $api_response["message"] ?? "Unknown API error";
+                            }
                         } else {
+                            $res_array["message"] = "Invalid API response received";
                             $res_array["data"] = $api_response;
-                            $res_array["message"] = $api_response["message"];
                         }
                     } else {
                         $res_array["message"]="Please Check Your Entered Bynder Domain | Please Check Your Credentials";

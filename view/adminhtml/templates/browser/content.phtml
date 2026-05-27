@@ -45,337 +45,519 @@
 require([
     'jquery',
     'Magento_Ui/js/modal/modal'
-],
-function($,modal) {
+], function ($, modal) {
+
     var AjaxUrl = jQuery("#ajax_baseurl").val();
     var form_keys = jQuery("#form_keys").val();
 
-    $('#bynder').on('click', function() {
+    $('#bynder').on('click', function () {
+
         BynderCompactView.open({
             language: "en_US",
+
             theme: {
                 colorButtonPrimary: "#3380FF"
             },
-            /* mode:"SingleSelect", */
+
+            // mode: "SingleSelect",
+
             assetTypes: ["image"],
+
             mode: "MultiSelect",
-            onSuccess: function(assets, additionalInfo) {
-                var server_response = bynder_function(assets, additionalInfo);
+
+            onSuccess: function (assets, additionalInfo) {
+
+                var server_response = bynder_function(
+                    assets,
+                    additionalInfo
+                );
+
                 if (server_response) {
                     return true;
-                }
-                else {
+                } else {
                     return false;
                 }
-
-
-function bynder_function(assets, a) {
-    var asset = assets[0];
-    var dataset_ids = [];
-    var dataset_type = [];
-
-    $.each(assets, function (index, value) {
-        dataset_ids.push(value.databaseId);
-        dataset_type.push(value.type);
-    });
-    var bdomain = localStorage.getItem("cvad");
-    if(typeof bdomain == "undefined" && bdomain == null) {
-        alert("Something went wrong. Re-login system and try again...");
-    }
-
-    $.ajax({
-        showLoader: true,
-        url: AjaxUrl,
-        type: "POST",
-        data: {databaseId: dataset_ids, bdomain: bdomain, datasetType: dataset_type, form_key : form_keys },
-        dataType: "json",
-    }).done(function (data) {
-        var total_images = 0;
-        if (data.status == 2) {
-            alert(data.message);
-            return false;
-        }
-        else if (data.status == 1) {
-
-            var type_design = "<style>"+
-                            ".image-boxs {display: grid; grid-template-columns: repeat(5, 1fr); grid-column-gap: 5px;}"+
-                            ".image-boxs .m-box"+
-                            "{border: 1px solid rgba(0, 0, 0, 0.8); margin: 3px; text-align: center; padding: 5px;}"+
-                            ".m-content label { font-weight: 800; }"+
-                            "</style>";
-
-            type_design += '<div class="main-part bynder-imgbox-div">' +
-                                '<div class="middle-content">' +
-                                '<div class="main-one image-boxs" >';
-
-            /*$.each(data.data, function (index, r) {
-                $.each(r, function (i, res) {
-					console.log("res", res);
-                    var dataset_tag = '<img src="' + res.main_link1 + '">';
-                    total_images++;
-
-                    console.log("bynder step=1");
-                    console.log(res);
-
-                    if(res.dataset_type == "VIDEO") {
-                        dataset_tag = '<video width="100%" controls><source src="'+res.main_link1+'" type="video/mp4">'
-                        dataset_tag +='<source src="'+res.main_link+'" type="video/ogg">'+
-                                        'Your browser does not support HTML video.</video>';
-                    }
-
-                    var dataset_size = '( Size: ' + res.size + ')'
-                    if(res.dataset_type == "DOCUMENT") {
-                        dataset_size = " ";
-                    }
-
-                    type_design += '<div class="m-box">' +
-                            '<div class="m-img">' +
-                                dataset_tag +
-                            '</div>' +
-                            '<div class="m-content">' +
-                                '<input type="checkbox" class="image_types"'+
-                                'id="image_type_' + total_images + '"'+
-                                ' name="image_type_'+index+'" value="' + res.type + index + '">' +
-                                '<label for="image_type_' +total_images+ '">' +res.type+" "+dataset_size+'</label>' +
-                            '</div>' +
-                            '</div>';
-                });
-            });*/
-			$.each(data.data, function(index, r) {
-                                        $.each(r, function(i, res) {
-                                            
-                                           //if(i.isdigit()){                                          
-                                            var item_type = res.dataset_type;
-                                            if (res.image_link == null) {
-                                                type_design += '<h5 style="color:red;">'+
-                                                                'You don\'t have access.<img src="'+res.main_link1+'">'+
-                                                                'Please Make It Public from Bynder</h5>';
-                                                return false;
-                                            } else {
-                                               
-                                                var download_link = res.download_link;
-                                                
-                                                var original_img_url = download_link.split("?");
-                                                var dataset_tag = '<img src="' + res.image_link + '">';
-                                                total_images++;
-                                                
-                                                if (item_type == "VIDEO") {
-                                                    dataset_tag = '<video width="100%" controls>'+
-                                                                   '<source src="'+res.image_link+'" type="video/mp4">'+
-                                                                   '<source src="'+res.main_link+'" type="video/ogg">'+
-                                                                   'Your browser does not support HTML video.</video>';
-                                                }
-
-                                                var dataset_size = '( Size: ' + res.size + ')'
-                                                if (res.size == "0x0") {
-                                                    dataset_size = " ";
-                                                }
-
-                                                if (res.size == "0x0" && item_type == "DOCUMENT") {
-                                                    type_design += '<div class="m-box">' +
-                                                    '<div class="m-img">' +
-                                                    dataset_tag +
-                                                    '</div>' +
-                                                    '<div class="m-content">' +
-                                                    '<input type="checkbox" class="image_types"'+
-                                                    'id="image_type_' + total_images + '"'+
-                                                    '"data-alttext"="'+r.thumbnails.img_alt_text+'"'+
-                                                    '"data-imagerole"="'+r.thumbnails.all_magento_role_options+'"'+
-                                                    'name="image_type_' + index + '"'+
-                                                    'data-itemType="'+item_type+'"value="'+res.type+index +'">'+
-                                                    '<label for="image_type_'+total_images+'">'+
-                                                        res.type +" "+dataset_size+
-                                                    '</label>'+
-                                                    '</div>' +
-                                                    '</div>';
-                                                }
-                                                if (item_type == "IMAGE" || item_type == "VIDEO") {
-                                                    if (item_type == "IMAGE") {
-                                                        var name_od_the_image = res.type;
-                                                    } else {
-                                                        var name_od_the_image = res.name;
-                                                    }
-                                                    if (res.size != "0x0") {
-                                                        type_design += '<div class="m-box">' +
-                                                        '<div class="m-img">' +
-                                                        dataset_tag +
-                                                        '</div>' +
-                                                        '<div class="m-content">' +
-                                                        '<input type="checkbox"'+
-                                                        '"data-alttext"="'+r.thumbnails.img_alt_text+'"'+
-                                                        'class="image_types" id="image_type_' + total_images + '"'+
-                                                        'name="image_type_'+index+'"'+
-                                                        'data-itemType="'+item_type+'"'+
-                                                        '"data-imagerole"="'+r.thumbnails.all_magento_role_options+'"'+
-                                                        'value="' + res.type + index + '">'+
-                                                        '<label for="image_type_' + total_images + '">'+ 
-                                                            name_od_the_image + " " + dataset_size + 
-                                                        '</label>' +
-                                                        '</div>' +
-                                                        '</div>';
-                                                    } else if (item_type == "VIDEO") {
-                                                    type_design += '<div class="m-box">' +
-                                                    '<div class="m-img">' +
-                                                    dataset_tag +
-                                                    '</div>' +
-                                                    '<div class="m-content">' +
-                                                    '<input type="checkbox" class="image_types"'+
-                                                    'id="image_type_'+total_images+'"'+
-                                                    '"data-alttext"="'+r.thumbnails.img_alt_text+'"'+
-                                                    '"data-imagerole"="'+r.thumbnails.all_magento_role_options+'"'+
-                                                    'name="image_type_'+index +'"'+
-                                                    'data-itemType="'+item_type+'"'+
-                                                    'value="' + res.type + index + '">' +
-                                                    '<label for="image_type_' + total_images + '">' + 
-                                                        name_od_the_image + " " + dataset_size + 
-                                                    '</label>' +
-                                                    '</div>' +
-                                                    '</div>';
-                                                    }
-                                                }
-
-                                            }
-                                           
-                                        //} 
-
-                                        });
-                                    });
-            type_design += '</div> </div> </div>';
-
-            $("#compactViewContainer_content").html(type_design);
-            var options = {
-                type: "popup",
-                responsive: true,
-                innerScroll: true,
-                title: "Select Bynder Image",
-                buttons: [{
-                    text: $.mage.__("Continue"),
-                    id: "selected_item_btn",
-                    class: "",
-                    click: function () {
-                        var selected_types = [];
-                        $(".image_types").each(function () {
-                            var select_val = $(this).val();
-                            if ($(this).prop("checked")) {
-                                selected_types.push(select_val);
-                            }
-                        });
-
-                        if(selected_types.length > 0) {
-							var img_url = "";
-							var img_url_path = "";
-							var database_array = [];
-							$.each(data.data, function (index, r) {
-								var image_links_test = assets[index].url;
-								$.each(r, function (i, res) {
-									image_links_test += "&&thumb_link=" + res.main_link1 + "&&"
-									var type_val = res.type + index;
-									if ($.inArray(type_val, selected_types) != -1) {
-										console.log(res);
-
-										if(res.dataset_type == "DOCUMENT") {
-											img_url += res.main_link1 + "\n";
-											img_url_path += res.main_link1 + ",";
-											database_array.push(res.main_link);
-										}
-										else {
-											if(res.dataset_type != "DOCUMENT") {
-												img_url += res.main_link1 + "\n";
-												img_url_path += res.main_link1 + ",";
-												database_array.push(res.main_link1);
-												/*database_array.push(res.s3_link);*/
-											}
-										}
-									}
-								});
-							});
-
-							console.log(database_array);
-
-
-							addtodirectory(database_array);
-							this.closeModal();
-
-
-						}
-
-                        else {
-                            alert("Sorry, you not selected any type ?");
-                        }
-                    }
-                }]
-
-            };
-            var popup = modal(options, $("#popup-modal-content"));
-            $("#popup-modal-content").modal("openModal");
-            return true;
-
-        }
-        else {
-            alert(data.message);
-            return false;
-        }
-    });
-}
-
-
-				function addtodirectory(img_data) {
-					console.log("add dir");
-					console.log(img_data);
-
-					var callurl = $("#ajax_addtofolder").val();
-					var form_keys = $("#form_keys").val();
-					var dir_path = "ahfproducts ";
-					if(img_data != "") {
-						$.ajax({
-							showLoader: true,
-							url: callurl,
-							type: "POST",
-							data: { img_data : img_data, form_key : form_keys, dir_path : dir_path },
-							dataType: "json",
-						}).done(function (data) {
-							var res = data;
-							console.log(data);
-							if(res.status == 1) {
-								if(jQuery('label[data-force_static_path="1"][data-bind*="openMediaBrowserDialog"]').length > 0) {
-									console.log("IF");
-									jQuery('label[data-force_static_path="1"][data-bind*="openMediaBrowserDialog"]').trigger('click')
-									var successMessage = '<div class="message message-success success"><div data-ui-id="messages-message-success">Assets have been successfully uploaded!</div></div>';
-									$('ul.messages').append(successMessage);
-									$('ul.messages').find('.success').last().hide().fadeIn();
-									setTimeout(function () {
-										$('ul.messages').find('.success').fadeOut(function () {
-											$(this).remove();
-										});
-									}, 5000); 
-								}else {
-									console.log("ELSE");
-									jQuery('button.scalable.action-add-image.plugin').trigger('click')
-									var successMessage = '<div class="message message-success success"><div data-ui-id="messages-message-success">Assets have been successfully uploaded!</div></div>';
-									$('ul.messages').append(successMessage);
-									$('ul.messages').find('.success').last().hide().fadeIn();
-									setTimeout(function () {
-										$('ul.messages').find('.success').fadeOut(function () {
-											$(this).remove();
-										});
-									}, 5000); 
-								}
-								//jQuery('#YnluZGVy a').click();
-								return true;
-							}
-							else {
-								alert(res.message);
-								return false;
-							}
-						});
-					} else {
-						alert("Something went wrong. Please reload the page and try again.");
-						return false;
-					}
-				}
             }
         });
     });
+
+    /**
+     * BYNDER FUNCTION
+     */
+    function bynder_function(assets, a) {
+
+        var asset = assets[0];
+
+        var dataset_ids = [];
+        var dataset_type = [];
+
+        $.each(assets, function (index, value) {
+
+            dataset_ids.push(value.databaseId);
+            dataset_type.push(value.type);
+        });
+
+        var bdomain = localStorage.getItem("cvad");
+
+        if (typeof bdomain == "undefined" && bdomain == null) {
+
+            alert(
+                "Something went wrong. Re-login system and try again..."
+            );
+        }
+
+        $.ajax({
+            showLoader: true,
+            url: AjaxUrl,
+            type: "POST",
+            data: {
+                databaseId: dataset_ids,
+                bdomain: bdomain,
+                datasetType: dataset_type,
+                form_key: form_keys
+            },
+            dataType: "json",
+
+        }).done(function (data) {
+
+            var total_images = 0;
+
+            if (data.status == 2) {
+
+                alert(data.message);
+
+                return false;
+
+            } else if (data.status == 1) {
+
+                var type_design =
+                    "<style>" +
+                    ".image-boxs {" +
+                    "display: grid;" +
+                    "grid-template-columns: repeat(5, 1fr);" +
+                    "grid-column-gap: 5px;" +
+                    "}" +
+
+                    ".image-boxs .m-box {" +
+                    "border: 1px solid rgba(0, 0, 0, 0.8);" +
+                    "margin: 3px;" +
+                    "text-align: center;" +
+                    "padding: 5px;" +
+                    "}" +
+
+                    ".m-content label {" +
+                    "font-weight: 800;" +
+                    "}" +
+                    "</style>";
+
+                type_design +=
+                    '<div class="main-part bynder-imgbox-div">' +
+                    '<div class="middle-content">' +
+                    '<div class="main-one image-boxs">';
+
+                $.each(data.data, function (index, r) {
+
+                    $.each(r, function (i, res) {
+
+                        var item_type = res.dataset_type;
+
+                        if (res.image_link == null) {
+
+                            type_design +=
+                                '<h5 style="color:red;">' +
+                                'You don\'t have access.' +
+                                '<img src="' + res.main_link1 + '">' +
+                                'Please Make It Public from Bynder' +
+                                '</h5>';
+
+                            return false;
+
+                        } else {
+
+                            var download_link = res.download_link;
+
+                            var original_img_url =
+                                download_link?.split("?") || "";
+
+                            var dataset_tag =
+                                '<img src="' + res.image_link + '">';
+
+                            total_images++;
+
+                            /**
+                             * VIDEO
+                             */
+                            if (item_type == "VIDEO") {
+
+                                dataset_tag =
+                                    '<video width="100%" controls>' +
+                                    '<source src="' + res.image_link + '" type="video/mp4">' +
+                                    '<source src="' + res.main_link + '" type="video/ogg">' +
+                                    'Your browser does not support HTML video.' +
+                                    '</video>';
+                            }
+
+                            var dataset_size =
+                                '( Size: ' + res.size + ')';
+
+                            if (res.size == "0x0") {
+                                dataset_size = " ";
+                            }
+
+                            /**
+                             * DOCUMENT
+                             */
+                            if (
+                                res.size == "0x0" &&
+                                item_type == "DOCUMENT"
+                            ) {
+
+                                type_design +=
+                                    '<div class="m-box">' +
+
+                                    '<div class="m-img">' +
+                                    dataset_tag +
+                                    '</div>' +
+
+                                    '<div class="m-content">' +
+
+                                    '<input type="checkbox"' +
+                                    ' class="image_types"' +
+                                    ' id="image_type_' + total_images + '"' +
+                                    ' data-alttext="' + r.thumbnails.img_alt_text + '"' +
+                                    ' data-imagerole="' + r.thumbnails.all_magento_role_options + '"' +
+                                    ' name="image_type_' + index + '"' +
+                                    ' data-itemType="' + item_type + '"' +
+                                    ' value="' + res.type + index + '">' +
+
+                                    '<label for="image_type_' + total_images + '">' +
+                                    res.type + " " + dataset_size +
+                                    '</label>' +
+
+                                    '</div>' +
+                                    '</div>';
+                            }
+
+                            /**
+                             * IMAGE OR VIDEO
+                             */
+                            if (
+                                item_type == "IMAGE" ||
+                                item_type == "VIDEO"
+                            ) {
+
+                                var name_od_the_image = (
+                                    item_type == "IMAGE"
+                                ) ? res.type : res.name;
+
+                                /**
+                                 * IMAGE
+                                 */
+                                if (res.size != "0x0") {
+
+                                    type_design +=
+                                        '<div class="m-box">' +
+
+                                        '<div class="m-img">' +
+                                        dataset_tag +
+                                        '</div>' +
+
+                                        '<div class="m-content">' +
+
+                                        '<input type="checkbox"' +
+                                        ' class="image_types"' +
+                                        ' id="image_type_' + total_images + '"' +
+                                        ' data-alttext="' + r.thumbnails.img_alt_text + '"' +
+                                        ' data-imagerole="' + r.thumbnails.all_magento_role_options + '"' +
+                                        ' name="image_type_' + index + '"' +
+                                        ' data-itemType="' + item_type + '"' +
+                                        ' value="' + res.type + index + '">' +
+
+                                        '<label for="image_type_' + total_images + '">' +
+                                        name_od_the_image + " " + dataset_size +
+                                        '</label>' +
+
+                                        '</div>' +
+                                        '</div>';
+
+                                } else if (item_type == "VIDEO") {
+
+                                    /**
+                                     * VIDEO
+                                     */
+                                    type_design +=
+                                        '<div class="m-box">' +
+
+                                        '<div class="m-img">' +
+                                        dataset_tag +
+                                        '</div>' +
+
+                                        '<div class="m-content">' +
+
+                                        '<input type="checkbox"' +
+                                        ' class="image_types"' +
+                                        ' id="image_type_' + total_images + '"' +
+                                        ' data-alttext="' + r.thumbnails.img_alt_text + '"' +
+                                        ' data-imagerole="' + r.thumbnails.all_magento_role_options + '"' +
+                                        ' name="image_type_' + index + '"' +
+                                        ' data-itemType="' + item_type + '"' +
+                                        ' value="' + res.type + index + '">' +
+
+                                        '<label for="image_type_' + total_images + '">' +
+                                        name_od_the_image + " " + dataset_size +
+                                        '</label>' +
+
+                                        '</div>' +
+                                        '</div>';
+                                }
+                            }
+                        }
+                    });
+                });
+
+                type_design +=
+                    '</div>' +
+                    '</div>' +
+                    '</div>';
+
+                $("#compactViewContainer_content").html(
+                    type_design
+                );
+
+                /**
+                 * MODAL OPTIONS
+                 */
+                var options = {
+                    type: "popup",
+                    responsive: true,
+                    innerScroll: true,
+                    title: "Select Bynder Image",
+
+                    buttons: [{
+                        text: $.mage.__("Continue"),
+                        id: "selected_item_btn",
+                        class: "",
+
+                        click: function () {
+
+                            var selected_types = [];
+
+                            $(".image_types").each(function () {
+
+                                var select_val = $(this).val();
+
+                                if ($(this).prop("checked")) {
+
+                                    selected_types.push(select_val);
+                                }
+                            });
+
+                            if (selected_types.length > 0) {
+
+                                var img_url = "";
+                                var img_url_path = "";
+                                var database_array = [];
+
+                                $.each(data.data, function (index, r) {
+
+                                    var image_links_test =
+                                        assets[index].url;
+
+                                    $.each(r, function (i, res) {
+
+                                        image_links_test +=
+                                            "&&thumb_link=" +
+                                            res.main_link1 +
+                                            "&&";
+
+                                        var type_val =
+                                            res.type + index;
+
+                                        if (
+                                            $.inArray(
+                                                type_val,
+                                                selected_types
+                                            ) != -1
+                                        ) {
+
+                                            console.log(res);
+
+                                            if (
+                                                res.dataset_type ==
+                                                "DOCUMENT"
+                                            ) {
+
+                                                img_url +=
+                                                    res.main_link1 + "\n";
+
+                                                img_url_path +=
+                                                    res.main_link1 + ",";
+
+                                                database_array.push(
+                                                    res.main_link
+                                                );
+
+                                            } else {
+
+                                                if (
+                                                    res.dataset_type !=
+                                                    "DOCUMENT"
+                                                ) {
+
+                                                    img_url +=
+                                                        res.main_link1 + "\n";
+
+                                                    img_url_path +=
+                                                        res.main_link1 + ",";
+
+                                                    database_array.push(
+                                                        res.main_link1
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    });
+                                });
+
+                                console.log(database_array);
+
+                                addtodirectory(database_array);
+
+                                this.closeModal();
+
+                            } else {
+
+                                alert(
+                                    "Sorry, you not selected any type ?"
+                                );
+                            }
+                        }
+                    }]
+                };
+
+                var popup = modal(
+                    options,
+                    $("#popup-modal-content")
+                );
+
+                $("#popup-modal-content").modal(
+                    "openModal"
+                );
+
+                return true;
+
+            } else {
+
+                alert(data.message);
+
+                return false;
+            }
+        });
+    }
+
+    /**
+     * ADD TO DIRECTORY
+     */
+    function addtodirectory(img_data) {
+
+        console.log("add dir");
+        console.log(img_data);
+
+        var callurl = $("#ajax_addtofolder").val();
+
+        var form_keys = $("#form_keys").val();
+
+        var dir_path = "ahfproducts";
+
+        if (img_data != "") {
+
+            $.ajax({
+                showLoader: true,
+                url: callurl,
+                type: "POST",
+
+                data: {
+                    img_data: img_data,
+                    form_key: form_keys,
+                    dir_path: dir_path
+                },
+
+                dataType: "json",
+
+            }).done(function (data) {
+
+                var res = data;
+
+                console.log(data);
+
+                if (res.status == 1) {
+
+                    if (
+                        jQuery(
+                            'label[data-force_static_path="1"][data-bind*="openMediaBrowserDialog"]'
+                        ).length > 0
+                    ) {
+
+                        console.log("IF");
+
+                        jQuery(
+                            'label[data-force_static_path="1"][data-bind*="openMediaBrowserDialog"]'
+                        ).trigger('click');
+
+                    } else {
+
+                        console.log("ELSE");
+
+                        jQuery(
+                            'button.scalable.action-add-image.plugin'
+                        ).trigger('click');
+                    }
+
+                    var successMessage =
+                        '<div class="message message-success success">' +
+                        '<div data-ui-id="messages-message-success">' +
+                        'Assets have been successfully uploaded!' +
+                        '</div>' +
+                        '</div>';
+
+                    $('ul.messages').append(successMessage);
+
+                    $('ul.messages')
+                        .find('.success')
+                        .last()
+                        .hide()
+                        .fadeIn();
+
+                    setTimeout(function () {
+
+                        $('ul.messages')
+                            .find('.success')
+                            .fadeOut(function () {
+
+                                $(this).remove();
+                            });
+
+                    }, 5000);
+
+                    return true;
+
+                } else {
+
+                    alert(res.message);
+
+                    return false;
+                }
+            });
+
+        } else {
+
+            alert(
+                "Something went wrong. Please reload the page and try again."
+            );
+
+            return false;
+        }
+    }
 
 });
 </script>

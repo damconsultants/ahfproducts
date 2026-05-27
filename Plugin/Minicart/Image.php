@@ -2,59 +2,65 @@
 
 namespace DamConsultants\Ahfproducts\Plugin\Minicart;
 
-use Magento\Checkout\CustomerData\AbstractItem;
-use Magento\Quote\Model\Quote\Item;
 
 class Image
 {
     /**
+     * @var $_registry
+     */
+    protected $_registry;
+    /**
+     * @var $_registry
+     */
+    protected $product;
+    /**
+     * Image
+     * @param \Magento\Framework\Registry $Registry
+     * @param \Magento\Catalog\Model\Product $product
+     */
+    public function __construct(
+        \Magento\Framework\Registry $Registry,
+        \Magento\Catalog\Model\Product $product
+    ) {
+        
+        $this->_registry = $Registry;
+        $this->product = $product;
+    }
+
+    /**
      * Around Get Item Data
      *
-     * @param AbstractItem $subject
+     * @param \Magento\Checkout\CustomerData\AbstractItem $subject
      * @param \Closure $proceed
-     * @param Item $item
-     * @return array
+     * @param \Magento\Quote\Model\Quote\Item $item
      */
     public function aroundGetItemData(
-        AbstractItem $subject,
+        \Magento\Checkout\CustomerData\AbstractItem $subject,
         \Closure $proceed,
-        Item $item
+        \Magento\Quote\Model\Quote\Item $item
     ) {
+
         $data = $proceed($item);
-
-        /** Product is already loaded – DO NOT load again */
-        $product = $item->getProduct();
-
-        if (!$product || !$product->getId()) {
-            return $data;
-        }
-
-        /** Get Bynder image JSON safely */
-        $bynderImage = (string) $product->getData('bynder_multi_img');
-
-        if ($bynderImage === '') {
-            return $data;
-        }
-
-        $images = json_decode($bynderImage, true);
-
-        if (!is_array($images)) {
-            return $data;
-        }
-
-        /** Find Thumbnail image */
-        foreach ($images as $image) {
-            if (
-                !empty($image['image_role']) &&
-                is_array($image['image_role']) &&
-                in_array('Thumbnail', $image['image_role'], true) &&
-                !empty($image['thum_url'])
-            ) {
-                $data['product_image']['src'] = trim($image['thum_url']);
-                break;
+        $productId = $item->getProduct()->getId();
+        $product = $this->product->load($productId);
+        $bynderImage = $product->getData('bynder_multi_img');
+        $json_value = json_decode($bynderImage, true);
+        $thumbnail = 'Thumbnail';
+        if (!empty($json_value)) {
+            foreach ($json_value as $values) {
+                if (isset($values['image_role'])) {
+                    foreach ($values['image_role'] as $image_role) {
+                        if ($image_role ==  $thumbnail) {
+                            $image_values = trim($values['thum_url']);
+                            $data['product_image']['src'] =  $image_values;
+                        }
+                    }
+                }
             }
+        } else {
+          
+            $data['product_image']['src'];
         }
-
         return $data;
     }
 }

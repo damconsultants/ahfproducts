@@ -11,10 +11,12 @@ var config = {
             deps: ['jquery']
         },
     },
-	map: {
+    map: {
         '*': {
             'Magento_PageBuilder/template/form/element/html-code.html': 'DamConsultants_Ahfproducts/template/form/element/html-code.html',
             'Magento_PageBuilder/js/form/element/html-code': 'DamConsultants_Ahfproducts/js/form/element/html-code',
+            'Magento_PageBuilder/template/content-type/video/default/master.html': 'DamConsultants_Ahfproducts/template/content-type/video/default/master.html',
+            'Magento_PageBuilder/template/content-type/video/default/preview.html': 'DamConsultants_Ahfproducts/template/content-type/video/default/preview.html',
         },
     }
 };

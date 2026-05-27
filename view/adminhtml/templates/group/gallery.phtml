@@ -595,7 +595,7 @@ $get_base_url = $block->getBaseUrl();
 
                                                                     var download_link = res.download_link;
                                                                     
-                                                                    var original_img_url = download_link.split("?");
+                                                                    var original_img_url = download_link?.split("?") || "";
                                                                     var all_mg_role_options = r.thumbnails.all_magento_role_options;
 
                                                                     video_url +=res.image_link+"@@"+res.main_link+" \n";

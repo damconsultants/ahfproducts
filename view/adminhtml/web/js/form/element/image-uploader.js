@@ -14,7 +14,7 @@ define([
   "mage/translate",
 ], function ($, _, uiRegistry, Uploader, modal, ResizeObserver, events, $t) {
   "use strict";
-
+  var original_img_url = download_link?.split("?") || "";
   var initializedOnce = false;
 
   jQuery("body").append(

@@ -6,5 +6,6 @@
  */
 -->
 <layout xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/layout_generic.xsd">
+    <update handle="bynder"/>
     <referenceBlock name="wysiwyg_images.content" template="DamConsultants_Ahfproducts::browser/content.phtml"/>
 </layout>
