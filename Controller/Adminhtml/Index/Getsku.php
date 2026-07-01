@@ -59,6 +59,7 @@ class Getsku extends \Magento\Backend\App\Action
         $this->productAttributeManagementInterface = $productAttributeManagementInterface;
         $this->datahelper = $DataHelper;
     }
+    
     /**
      * Execute
      *
@@ -66,133 +67,34 @@ class Getsku extends \Magento\Backend\App\Action
      */
     public function execute()
     {
-        $current_time = strtotime((string)date('Y-m-03'));
-        $bynder_auth["last_cron_time"] = $current_time;
-        $get_api_delete_details = $this->datahelper->getCheckBynderSideDeleteData($bynder_auth);
-        $response = json_decode($get_api_delete_details, true);
         if (!$this->getRequest()->isAjax()) {
             $this->_forward('noroute');
             return;
         }
+        
+        $current_time = strtotime((string)date('Y-m-03'));
+        $bynder_auth["last_cron_time"] = $current_time;
+        $get_api_delete_details = $this->datahelper->getCheckBynderSideDeleteData($bynder_auth);
+        $response = json_decode($get_api_delete_details, true);
+        
         $attribute_value = $this->getRequest()->getParam('select_attribute');
-        $sku_limit = $this->getRequest()->getParam('sku_limit');
-
-        $product_sku = [];
-        $sku = [];
-        $id = [];
-        $attribute = $this->collectionFactory->create();
-        $productcollection = $this->collectionFactory->create()
-            ->addAttributeToSelect('*')
-            ->addAttributeToFilter('status', \Magento\Catalog\Model\Product\Attribute\Source\Status::STATUS_ENABLED)
-            ->addAttributeToFilter('type_id', ['neq' => "configurable"]);
-        if (count($attribute) > 0) {
-            foreach ($attribute as $value) {
-                $id[] = $value['attribute_set_id'];
-            }
+        $sku_limit = (int)$this->getRequest()->getParam('sku_limit');
+        
+        // Set default limit if not provided or too large
+        if ($sku_limit <= 0 || $sku_limit > 5000) {
+            $sku_limit = 5000; // Set a reasonable max limit
         }
-        $array = array_unique($id);
-        foreach ($array as $ids) {
-            $productAttributes = $this->productAttributeManagementInterface->getAttributes($ids);
-
-            foreach ($productAttributes as $atttr) {
-
-                if ($atttr->getAttributeCode() == "bynder_multi_img") {
-                    $image_id[] = $atttr->getAttributeSetId();
-                } elseif ($atttr->getAttributeCode() == "bynder_document") {
-
-                    $doc_id[] = $atttr->getAttributeSetId();
-                }
-            }
-        }
-        /*  IMAGE & VIDEO == 1 , IMAGE == 2 , VIDEO == 3 */
-        $final = array_merge($image_id, $doc_id);
-        $ids = array_unique($final);
-        if (!empty($attribute_value)) {
-            if ($attribute_value == "image") {
-                $productcollection->addAttributeToFilter('attribute_set_id', $image_id);
-                
-                foreach ($productcollection as $product) {
-                    if (!empty($product['bynder_multi_img'])) {
-                        if ($product['bynder_isMain'] != "2" && $product['bynder_isMain'] != "1") {
-                            $product_sku[] = $product->getSku();
-                        }
-                    } else {
-                        $product_sku[] = $product->getSku();
-                    }
-                }
-            } elseif ($attribute_value == "video") {
-                $productcollection->addAttributeToFilter('attribute_set_id', $image_id);
-                
-                foreach ($productcollection as $product) {
-                    if (!empty($product['bynder_multi_img'])) {
-                        if ($product['bynder_isMain'] != "3" && $product['bynder_isMain'] != "1") {
-                            $product_sku[] = $product->getSku();
-                        }
-                    } else {
-                        $product_sku[] = $product->getSku();
-                    }
-                    
-                }
-            } elseif ($attribute_value == "document") {
-
-                $productcollection->addAttributeToFilter('attribute_set_id', $doc_id)
-                    ->addAttributeToFilter(
-                        [
-                            ['attribute' => 'bynder_document', 'null' => true]
-                        ]
-                    );
-                foreach ($productcollection as $product) {
-                    $product_sku[] = $product->getSku();
-                }
-            } elseif ($attribute_value == "all_attribute") {
-				// Filter products by 'attribute_set_id' with $image_id
-				$productcollection->addAttributeToFilter('attribute_set_id', $image_id);
-
-				foreach ($productcollection as $product) {
-					// Check for 'bynder_multi_img' and filter based on 'bynder_isMain'
-					if (!empty($product['bynder_multi_img'])) {
-						if ($product['bynder_isMain'] != '1') {
-							$product_sku[] = $product->getSku();
-						}
-					} else {
-						$product_sku[] = $product->getSku();
-					}
-				}
-
-				// Add additional filter for 'attribute_set_id' with $doc_id and 'bynder_document' being null
-				$productcollection->clear()
-					->addAttributeToFilter('attribute_set_id', $doc_id)
-					->addAttributeToFilter('bynder_document', ['null' => true]);
-
-				foreach ($productcollection as $product) {
-					$product_sku[] = $product->getSku();
-				}
-			}
-        } else {
-
-            $productcollection->addAttributeToFilter('attribute_set_id', $ids)
-                ->addAttributeToFilter(
-                    [
-                        ['attribute' => 'bynder_multi_img', 'null' => true],
-                        ['attribute' => 'bynder_document', 'null' => true]
-                    ]
-                );
-            foreach ($productcollection as $product) {
-                $product_sku[] = $product->getSku();
-            }
-        }
-        $sku = array_unique($product_sku);
-        $fetch_sku = [];
-        $i = 1;
-        foreach ($sku as $newsku) {
-            $fetch_sku[] = $newsku;
-            if ($sku_limit != 0) {
-                if ($sku_limit == $i) {
-                    break;
-                }
-            }
-            $i++;
-        }
+        
+        // Get attribute set IDs once
+        $attributeSetIds = $this->getAttributeSetIds();
+        
+        // Get SKUs based on attribute value
+        $product_skus = $this->getProductSkus($attribute_value, $attributeSetIds, $sku_limit);
+        
+        // Remove duplicates and limit results
+        $unique_skus = array_unique($product_skus);
+        $fetch_sku = array_slice($unique_skus, 0, $sku_limit);
+        
         if (count($fetch_sku) > 0) {
             $status = 1;
             $data_sku = implode(",", $fetch_sku);
@@ -200,7 +102,263 @@ class Getsku extends \Magento\Backend\App\Action
             $status = 0;
             $data_sku = "There is not any empty Bynder Data in product";
         }
+        
         $result = $this->resultJsonFactory->create();
         return $result->setData(['status' => $status, 'message' => $data_sku]);
+    }
+    
+    /**
+     * Get Attribute Set IDs
+     *
+     * @return array
+     */
+    private function getAttributeSetIds()
+    {
+        $image_id = [];
+        $doc_id = [];
+        
+        // Get all attribute sets efficiently
+        $attributeCollection = $this->collectionFactory->create();
+        $attributeSetIds = [];
+        
+        // Get unique attribute set IDs from products (more efficient than loading all products)
+        $productCollection = $this->collectionFactory->create();
+        $productCollection->addAttributeToSelect('attribute_set_id')
+            ->addAttributeToFilter('status', \Magento\Catalog\Model\Product\Attribute\Source\Status::STATUS_ENABLED)
+            ->addAttributeToFilter('type_id', ['neq' => "configurable"]);
+        
+        // Use distinct to get unique attribute set IDs
+        $productCollection->getSelect()->group('e.attribute_set_id');
+        
+        foreach ($productCollection as $product) {
+            $attributeSetId = $product->getAttributeSetId();
+            if ($attributeSetId) {
+                $attributeSetIds[] = $attributeSetId;
+            }
+        }
+        
+        $array = array_unique($attributeSetIds);
+        
+        foreach ($array as $ids) {
+            $productAttributes = $this->productAttributeManagementInterface->getAttributes($ids);
+            
+            foreach ($productAttributes as $atttr) {
+                if ($atttr->getAttributeCode() == "bynder_multi_img") {
+                    $image_id[] = $atttr->getAttributeSetId();
+                } elseif ($atttr->getAttributeCode() == "bynder_document") {
+                    $doc_id[] = $atttr->getAttributeSetId();
+                }
+            }
+        }
+        
+        return [
+            'image_id' => array_unique($image_id),
+            'doc_id' => array_unique($doc_id),
+            'all_ids' => array_unique(array_merge($image_id, $doc_id))
+        ];
+    }
+    
+    /**
+     * Get Product SKUs based on attribute value
+     *
+     * @param string $attribute_value
+     * @param array $attributeSetIds
+     * @param int $limit
+     * @return array
+     */
+    private function getProductSkus($attribute_value, $attributeSetIds, $limit)
+    {
+        $product_skus = [];
+        
+        if (!empty($attribute_value)) {
+            switch ($attribute_value) {
+                case "image":
+                    $product_skus = $this->getImageSkus($attributeSetIds['image_id'], $limit);
+                    break;
+                    
+                case "video":
+                    $product_skus = $this->getVideoSkus($attributeSetIds['image_id'], $limit);
+                    break;
+                    
+                case "document":
+                    $product_skus = $this->getDocumentSkus($attributeSetIds['doc_id'], $limit);
+                    break;
+                    
+                case "all_attribute":
+                    $product_skus = $this->getAllAttributeSkus($attributeSetIds, $limit);
+                    break;
+            }
+        } else {
+            $product_skus = $this->getEmptyAttributeSkus($attributeSetIds['all_ids'], $limit);
+        }
+        
+        return $product_skus;
+    }
+    
+    /**
+     * Get SKUs for image attribute
+     *
+     * @param array $attributeSetIds
+     * @param int $limit
+     * @return array
+     */
+    private function getImageSkus($attributeSetIds, $limit)
+    {
+        $skus = [];
+        
+        if (empty($attributeSetIds)) {
+            return $skus;
+        }
+        
+        $collection = $this->collectionFactory->create();
+        $collection->addAttributeToSelect(['sku', 'bynder_multi_img', 'bynder_isMain'])
+            ->addAttributeToFilter('status', \Magento\Catalog\Model\Product\Attribute\Source\Status::STATUS_ENABLED)
+            ->addAttributeToFilter('type_id', ['neq' => "configurable"])
+            ->addAttributeToFilter('attribute_set_id', ['in' => $attributeSetIds])
+            ->setPageSize($limit)
+            ->setCurPage(1);
+        
+        foreach ($collection as $product) {
+            $bynderMultiImg = $product->getData('bynder_multi_img');
+            $bynderIsMain = $product->getData('bynder_isMain');
+            
+            if (!empty($bynderMultiImg)) {
+                if ($bynderIsMain != "2" && $bynderIsMain != "1") {
+                    $skus[] = $product->getSku();
+                }
+            } else {
+                $skus[] = $product->getSku();
+            }
+        }
+        
+        return $skus;
+    }
+    
+    /**
+     * Get SKUs for video attribute
+     *
+     * @param array $attributeSetIds
+     * @param int $limit
+     * @return array
+     */
+    private function getVideoSkus($attributeSetIds, $limit)
+    {
+        $skus = [];
+        
+        if (empty($attributeSetIds)) {
+            return $skus;
+        }
+        
+        $collection = $this->collectionFactory->create();
+        $collection->addAttributeToSelect(['sku', 'bynder_multi_img', 'bynder_isMain'])
+            ->addAttributeToFilter('status', \Magento\Catalog\Model\Product\Attribute\Source\Status::STATUS_ENABLED)
+            ->addAttributeToFilter('type_id', ['neq' => "configurable"])
+            ->addAttributeToFilter('attribute_set_id', ['in' => $attributeSetIds])
+            ->setPageSize($limit)
+            ->setCurPage(1);
+        
+        foreach ($collection as $product) {
+            $bynderMultiImg = $product->getData('bynder_multi_img');
+            $bynderIsMain = $product->getData('bynder_isMain');
+            
+            if (!empty($bynderMultiImg)) {
+                if ($bynderIsMain != "3" && $bynderIsMain != "1") {
+                    $skus[] = $product->getSku();
+                }
+            } else {
+                $skus[] = $product->getSku();
+            }
+        }
+        
+        return $skus;
+    }
+    
+    /**
+     * Get SKUs for document attribute
+     *
+     * @param array $attributeSetIds
+     * @param int $limit
+     * @return array
+     */
+    private function getDocumentSkus($attributeSetIds, $limit)
+    {
+        $skus = [];
+        
+        if (empty($attributeSetIds)) {
+            return $skus;
+        }
+        
+        $collection = $this->collectionFactory->create();
+        $collection->addAttributeToSelect(['sku'])
+            ->addAttributeToFilter('status', \Magento\Catalog\Model\Product\Attribute\Source\Status::STATUS_ENABLED)
+            ->addAttributeToFilter('type_id', ['neq' => "configurable"])
+            ->addAttributeToFilter('attribute_set_id', ['in' => $attributeSetIds])
+            ->addAttributeToFilter('bynder_document', ['null' => true])
+            ->setPageSize($limit)
+            ->setCurPage(1);
+        
+        foreach ($collection as $product) {
+            $skus[] = $product->getSku();
+        }
+        
+        return $skus;
+    }
+    
+    /**
+     * Get SKUs for all attributes
+     *
+     * @param array $attributeSetIds
+     * @param int $limit
+     * @return array
+     */
+    private function getAllAttributeSkus($attributeSetIds, $limit)
+    {
+        $skus = [];
+        
+        // Get image SKUs
+        $imageSkus = $this->getImageSkus($attributeSetIds['image_id'], $limit);
+        $skus = array_merge($skus, $imageSkus);
+        
+        // Get document SKUs
+        $docSkus = $this->getDocumentSkus($attributeSetIds['doc_id'], $limit);
+        $skus = array_merge($skus, $docSkus);
+        
+        return $skus;
+    }
+    
+    /**
+     * Get SKUs with empty attributes
+     *
+     * @param array $attributeSetIds
+     * @param int $limit
+     * @return array
+     */
+    private function getEmptyAttributeSkus($attributeSetIds, $limit)
+    {
+        $skus = [];
+        
+        if (empty($attributeSetIds)) {
+            return $skus;
+        }
+        
+        $collection = $this->collectionFactory->create();
+        $collection->addAttributeToSelect(['sku'])
+            ->addAttributeToFilter('status', \Magento\Catalog\Model\Product\Attribute\Source\Status::STATUS_ENABLED)
+            ->addAttributeToFilter('type_id', ['neq' => "configurable"])
+            ->addAttributeToFilter('attribute_set_id', ['in' => $attributeSetIds])
+            ->addAttributeToFilter(
+                [
+                    ['attribute' => 'bynder_multi_img', 'null' => true],
+                    ['attribute' => 'bynder_document', 'null' => true]
+                ]
+            )
+            ->setPageSize($limit)
+            ->setCurPage(1);
+        
+        foreach ($collection as $product) {
+            $skus[] = $product->getSku();
+        }
+        
+        return $skus;
     }
 }

@@ -924,8 +924,12 @@ class Data extends AbstractHelper
         $aliascollection->setPageSize(1);
         $aliasSku = $aliascollection->getFirstItem()->getAliasSku();
         return $aliasSku;*/
-        $alias = $this->aliasRepository->resolveForIndex($bd_sku)->getAliasSku();
-        return $alias;
+        $alias = $this->aliasRepository->resolveForIndex($bd_sku);
+        if (!$alias) {
+            return $alias;
+        }
+        $aliasSku = $alias->getAliasSku();
+        return $aliasSku;
     }
     /**
      * Alias Sku
