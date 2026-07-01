@@ -11,4 +11,4 @@ Magento 2 Ahfproducts Extension gives you a great opportunity to upload more “
     1.4.3. php bin/magento setup:static-content:deploy
     
 2) Using Composer
-      composer require damconsultants/ahfproducts :1.0.6
+      composer require damconsultants/ahfproducts :1.0.7
