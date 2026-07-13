@@ -13,9 +13,9 @@
         <plugin name="Dynamic\Productwiserate_product_view" type="DamConsultants\Ahfproducts\Plugin\Product\View\Type\Configurable" sortOrder="1" />
     </type>
     <type name="Magento\Catalog\Block\Product\View\Gallery">
-        <plugin name="ahfproducts _gallery_plugin" type="DamConsultants\Ahfproducts\Plugin\Product\GalleryPlugin" sortOrder="1"/>
+        <plugin name="ahfproducts_gallery_plugin" type="DamConsultants\Ahfproducts\Plugin\Product\GalleryPlugin" sortOrder="1"/>
     </type>
     <type name="Magento\Catalog\Block\Product\ImageFactory">
-        <plugin name="ahfproducts _image_plugin" type="DamConsultants\Ahfproducts\Plugin\Catalog\Block\Product\ImageFactoryPlugin" sortOrder="1" />
+        <plugin name="ahfproducts_image_plugin" type="DamConsultants\Ahfproducts\Plugin\Catalog\Block\Product\ImageFactoryPlugin" sortOrder="1" />
     </type>
 </config>

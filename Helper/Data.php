@@ -924,12 +924,26 @@ class Data extends AbstractHelper
         $aliascollection->setPageSize(1);
         $aliasSku = $aliascollection->getFirstItem()->getAliasSku();
         return $aliasSku;*/
-        $alias = $this->aliasRepository->resolveForIndex($bd_sku);
+        /*$alias = $this->aliasRepository->resolveForIndex($bd_sku);
         if (!$alias) {
             return $alias;
         }
         $aliasSku = $alias->getAliasSku();
-        return $aliasSku;
+        return $aliasSku;*/
+        $collection = $this->aliasCollectionFactory->create();
+
+        $collection->getSelect()
+            ->reset(\Zend_Db_Select::COLUMNS)
+            ->columns([
+                'alias_sku',
+                'all_alias_identifier' => new \Zend_Db_Expr(
+                    'GROUP_CONCAT(DISTINCT alias_identifier)'
+                )
+            ])
+            ->where('sku = ?', $bd_sku)
+            ->group('alias_sku');
+
+        return $collection->getData();
     }
     /**
      * Alias Sku
@@ -939,11 +953,24 @@ class Data extends AbstractHelper
      */
     public function getAliasBySku($alias_sku) 
     {
-        $aliascollection = $this->aliasCollectionFactory->create();
+        $collection = $this->aliasCollectionFactory->create();
+
+        $collection->getSelect()
+            ->reset(\Zend_Db_Select::COLUMNS)
+            ->columns([
+                'sku',
+                'all_alias_identifier' => new \Zend_Db_Expr(
+                    'GROUP_CONCAT(DISTINCT alias_identifier)'
+                )
+            ])
+            ->where('alias_sku = ?', $alias_sku)
+            ->group('sku');
+        return $collection->getData();
+        /*$aliascollection = $this->aliasCollectionFactory->create();
         $aliascollection->addFieldToFilter('alias_sku', $alias_sku);
         $aliascollection->setPageSize(1);
         $sku = $aliascollection->getFirstItem()->getSku();
-        return $sku;
+        return $sku;*/
     }
 
 }

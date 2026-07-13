@@ -159,6 +159,66 @@ $get_base_url = $block->getBaseUrl();
     var cur_product_id = '<?= $block->escapeHtml($product_id); ?>';
     var cur_sku = "<?= $block->escapeHtml($sku); ?>";
     var bynder_img_n = '<?= $block->escapeHtml($bynder_image); ?>';
+
+    function parseStoredBynderPayload(rawValue) {
+        if (!rawValue || rawValue === '') {
+            return null;
+        }
+
+        try {
+            var parsedValue = JSON.parse(rawValue);
+            if (parsedValue && typeof parsedValue === 'object') {
+                return parsedValue;
+            }
+        } catch (e) {
+            return null;
+        }
+
+        return null;
+    }
+
+    function getDisplayItemsFromStoredValue(rawValue) {
+        var parsedValue = parseStoredBynderPayload(rawValue);
+        if (parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue)) {
+            var items = [];
+            jQuery.each(parsedValue, function (aliasKey, aliasItems) {
+                if (Array.isArray(aliasItems)) {
+                    jQuery.each(aliasItems, function (index, item) {
+                        if (item && typeof item === 'object') {
+                            items.push(item);
+                        }
+                    });
+                }
+            });
+            return items;
+        }
+
+        if (Array.isArray(parsedValue)) {
+            return parsedValue;
+        }
+
+        return [];
+    }
+
+    function buildStoredBynderPayload(items, existingValue, aliasKey) {
+        var payload = {};
+        var parsedValue = parseStoredBynderPayload(existingValue);
+
+        if (parsedValue && typeof parsedValue === 'object' && !Array.isArray(parsedValue)) {
+            payload = parsedValue;
+        } else if (Array.isArray(parsedValue)) {
+            payload[aliasKey || cur_sku] = parsedValue;
+        }
+
+        var itemList = Array.isArray(items) ? items : [];
+        if (itemList.length > 0) {
+            payload[aliasKey || cur_sku] = itemList;
+        } else {
+            delete payload[aliasKey || cur_sku];
+        }
+
+        return payload;
+    }
     
     jQuery(document).ready(function(){
         jQuery("#import_image_bynder").appendTo(
@@ -204,11 +264,10 @@ $get_base_url = $block->getBaseUrl();
         
         if(old_bynder_image.trim() != ""){
             past_bynder_image_videos = jQuery('textarea[name="product[bynder_multi_img]"]').val();
-            const old_img_obj = JSON.parse(past_bynder_image_videos);
-            jQuery.each(old_img_obj,function(kk,val){
-                
+            var existingItems = getDisplayItemsFromStoredValue(past_bynder_image_videos);
+            jQuery.each(existingItems, function(kk, val){
                 var item_url_new = "";
-                var imag_url_val = val.item_url;
+                var imag_url_val = val.item_url || "";
                 var aws_word = "X-Amz-SignedHeaders";
                 var search_result = imag_url_val.indexOf(aws_word);
 
@@ -216,47 +275,52 @@ $get_base_url = $block->getBaseUrl();
                     image_url_explode1 = imag_url_val.split("?");
                     item_url_new = image_url_explode1[0];
                 }else{
-                    item_url_new = val.item_url;
+                    item_url_new = imag_url_val;
                 }
 
                 past_item_array.push(item_url_new);
-                past_item_role_array.push(val.image_role);
+                past_item_role_array.push(val.image_role || []);
             });
             
-            var total_old_format_image = old_bynder_image.split(" \n");
-            
-            if(total_old_format_image.length > 0){
-                jQuery.each(total_old_format_image,function(kk,val){
-                    if(val.trim() != ""){
-                        var images_details = {
-                            "item_url": val.trim(),
-                            "image_role": [],
-                            "item_type" : 'IMAGE',
-                            "thum_url" : val.trim()
-                        };
-                        
-                        old_selected_bynder_images.push(images_details);
-                    }
-                });
-            }    
+            if(existingItems.length === 0){
+                var total_old_format_image = old_bynder_image.split(" \n");
+                
+                if(total_old_format_image.length > 0){
+                    jQuery.each(total_old_format_image,function(kk,val){
+                        if(val.trim() != ""){
+                            var images_details = {
+                                "item_url": val.trim(),
+                                "image_role": [],
+                                "item_type" : 'IMAGE',
+                                "thum_url" : val.trim()
+                            };
+                            
+                            old_selected_bynder_images.push(images_details);
+                        }
+                    });
+                }
+            }
         }
      
 
         var old_selected_images = jQuery('textarea[name="product[bynder_multi_img]"]').val();
+        var displayItems = getDisplayItemsFromStoredValue(old_selected_images);
         
-        if(old_selected_images.trim() != "" || old_bynder_video.trim() != ""){
-            if(((x)=>{try{JSON.parse(x);return true;}catch(e){return false}})(old_selected_images))
-            {
-            }else{
+        if(displayItems.length > 0 || old_bynder_video.trim() != ""){
+            if (displayItems.length > 0) {
+                set_selected_images(displayItems);
+            } else {
                 old_selected_images = JSON.stringify(old_selected_bynder_images);
+                set_selected_images(old_selected_images);
             }
-            set_selected_images(old_selected_images);
         }else{
             jQuery('.dynamic-rows').find('.tbody_dynamic').html("");
         }
     });
     function set_selected_images(old_selected_images,){
-        var selected_images = JSON.parse(old_selected_images);
+        var selected_images = Array.isArray(old_selected_images)
+            ? old_selected_images
+            : getDisplayItemsFromStoredValue(old_selected_images);
         var item_length = selected_images.length;
         var content = '';
         selected_images.sort(function(a, b) {
@@ -899,7 +963,7 @@ $get_base_url = $block->getBaseUrl();
                                 });
                             } */
 
-                            var myJsonString = JSON.stringify(all_selected_images);
+                            var myJsonString = JSON.stringify(buildStoredBynderPayload(all_selected_images, jQuery('textarea[name="product[bynder_multi_img]"]').val(), cur_sku));
                             jQuery('textarea[name="product[bynder_multi_img]"]').val(myJsonString);
                             jQuery('textarea[name="product[bynder_videos]"]').val("");
                             /*document.cookie = "bynder_image=" + myJsonString + "; path=/;";*/
@@ -925,7 +989,7 @@ $get_base_url = $block->getBaseUrl();
                         //});
                     } else {
                         if (all_selected_images != '') {
-                            var myJsonString = JSON.stringify(all_selected_images);
+                            var myJsonString = JSON.stringify(buildStoredBynderPayload(all_selected_images, jQuery('textarea[name="product[bynder_multi_img]"]').val(), cur_sku));
                             jQuery('textarea[name="product[bynder_multi_img]"]').val(myJsonString);
                         } else {
                             jQuery('textarea[name="product[bynder_multi_img]"]').val("");
@@ -955,7 +1019,7 @@ $get_base_url = $block->getBaseUrl();
                     }
                 }else{
                     if (all_selected_images != '') {
-                        var myJsonString = JSON.stringify(all_selected_images);
+                        var myJsonString = JSON.stringify(buildStoredBynderPayload(all_selected_images, jQuery('textarea[name="product[bynder_multi_img]"]').val(), cur_sku));
                         jQuery('textarea[name="product[bynder_multi_img]"]').val(myJsonString);
                     } else {
                         jQuery('textarea[name="product[bynder_multi_img]"]').val("");
@@ -1023,7 +1087,7 @@ $get_base_url = $block->getBaseUrl();
                 all_selected_images.push(images_details);
             });
             if (all_selected_images.length > 0) {
-                var myJsonString = JSON.stringify(all_selected_images);
+                var myJsonString = JSON.stringify(buildStoredBynderPayload(all_selected_images, jQuery('textarea[name="product[bynder_multi_img]"]').val(), cur_sku));
                 $.ajax({
                     url: import_image_url,
                     showLoader: true,
