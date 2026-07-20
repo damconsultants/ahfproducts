@@ -133,9 +133,28 @@ class UpdateAllSku
                 
                 try {
                     $product_id = $this->product->getIdBySku($sku);
+                    $_product = $this->_productRepository->get($sku);
+                    $bynder_multi_img = $_product->getBynderMultiImg();
+                    $bynder_doc = $_product->getBynderDocument();
+                    $storeId = $this->storeManagerInterface->getStore()->getId();
+                    if (!empty($bynder_multi_img)) {
+                        $this->productAction->updateAttributes(
+                            [$product_id],
+                            ['bynder_multi_img' => null],
+                            $storeId
+                        );
+                    }
+                    if (!empty($bynder_doc)) {
+                        $this->productAction->updateAttributes(
+                            [$product_id],
+                            ['bynder_document' => null],
+                            $storeId
+                        );
+                    }
                     if (!$product_id) {
                         $insert_data = [
                             "sku" => $sku,
+                            "alias_sku" => null,
                             "message" => "SKU not found in products",
                             "data_type" => "",
                             "lable" => "0"
@@ -147,6 +166,7 @@ class UpdateAllSku
                 } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
                     $insert_data = [
                         "sku" => $sku,
+                        "alias_sku" => null,
                         "message" => "SKU not match in products",
                         "data_type" => "",
                         "lable" => "0"
@@ -158,24 +178,55 @@ class UpdateAllSku
                 
                 // Get alias SKUs for this product
                 $aliasSku = $this->datahelper->getSkuByAlias($sku);
+                $is_sku_made_alias = 0;
                 if ($aliasSku === null || empty($aliasSku)) {
                     // No alias found, use the product SKU itself
+                    $is_sku_made_alias = 1;
                     $this->processSku($sku, null, $select_attribute, $select_store, $property_id, $collection_value, $collection_slug_val, $skuData);
                 } else {
                     // Process each alias SKU
                     foreach ($aliasSku as $a_sku) {
-                        $this->processSku(
-                            $sku, 
-                            $a_sku['alias_sku'], 
-                            $select_attribute, 
-                            $select_store, 
-                            $property_id, 
-                            $collection_value, 
-                            $collection_slug_val, 
-                            $skuData,
-                            $a_sku['all_alias_identifier'] ?? null
-                        );
+                        if ($a_sku['alias_sku'] == null || empty($a_sku['alias_sku'])) {
+                            $is_sku_made_alias = 1;
+                            $this->processSku(
+                                $sku, 
+                                null, 
+                                $select_attribute, 
+                                $select_store, 
+                                $property_id, 
+                                $collection_value, 
+                                $collection_slug_val, 
+                                $skuData,
+                                $a_sku['all_alias_identifier'] ?? null
+                            );
+                        } else {
+                            $this->processSku(
+                                $sku, 
+                                $a_sku['alias_sku'], 
+                                $select_attribute, 
+                                $select_store, 
+                                $property_id, 
+                                $collection_value, 
+                                $collection_slug_val, 
+                                $skuData,
+                                $a_sku['all_alias_identifier'] ?? null
+                            );
+                        }
                     }
+                }
+                if($is_sku_made_alias == 0){
+                    $all_alias_identifier = array();
+                    $this->processSku(
+                        $sku, 
+                        null,
+                        $select_attribute, 
+                        $select_store, 
+                        $property_id, 
+                        $collection_value, 
+                        $collection_slug_val, 
+                        $skuData,
+                        $all_alias_identifier
+                    );
                 }
             }
         }
@@ -232,7 +283,8 @@ class UpdateAllSku
                             $this->magentoSku->delete($skuData);
                         } catch (Exception $e) {
                             $insert_data = [
-                                "sku" => $sku . ($aliasSku ? " alias sku " . $aliasSku : ""),
+                                "sku" => $sku,
+                                "alias_sku" => $aliasSku,
                                 "message" => $e->getMessage(),
                                 "data_type" => "",
                                 "lable" => "0"
@@ -241,41 +293,9 @@ class UpdateAllSku
                             $this->magentoSku->delete($skuData);
                         }
                     } else {
-                        // Update attributes when API returns error
-                        $storeId = $this->storeManagerInterface->getStore()->getId();
-                        $product_ids = $this->product->getIdBySku($sku);
-                        $updated_values = [
-                            'bynder_multi_img' => null,
-                            'bynder_isMain' => null,
-                            'bynder_auto_replace' => null
-                        ];
-
-                        if ($select_store == 'all_store') {
-                            $this->productAction->updateAttributes(
-                                [$product_ids],
-                                $updated_values,
-                                $storeId
-                            );
-                            $all_stores = $this->getMyStoreId();
-                            if (count($all_stores) > 0) {
-                                foreach ($all_stores as $storeId) {
-                                    $this->productAction->updateAttributes(
-                                        [$product_ids],
-                                        $updated_values,
-                                        $storeId
-                                    );
-                                }
-                            }
-                        } else {
-                            $this->productAction->updateAttributes(
-                                [$product_ids],
-                                $updated_values,
-                                $select_store
-                            );
-                        }
-                        
                         $insert_data = [
-                            "sku" => $sku . ($aliasSku ? " alias sku " . $aliasSku : ""),
+                            "sku" => $sku,
+                            "alias_sku" => $aliasSku,
                             "message" => $convert_array['data'],
                             "data_type" => "",
                             "lable" => "0"
@@ -285,7 +305,9 @@ class UpdateAllSku
                     }
                 } else {
                     $insert_data = [
+                        
                         "sku" => $sku,
+                        "alias_sku" => null,
                         "message" => 'Please Select The Metaproperty First.....',
                         "data_type" => "",
                         "lable" => "0"
@@ -296,6 +318,7 @@ class UpdateAllSku
             } else {
                 $insert_data = [
                     "sku" => $sku,
+                    "alias_sku" => null,
                     "message" => "Something went wrong from API side, Please contact to support team!",
                     "data_type" => "",
                     "lable" => "0"
@@ -305,7 +328,8 @@ class UpdateAllSku
             }
         } catch (Exception $e) {
             $insert_data = [
-                "sku" => $sku . ($aliasSku ? " alias sku " . $aliasSku : ""),
+                "sku" => $sku,
+                "alias_sku" => null,
                 "message" => $e->getMessage(),
                 "data_type" => "",
                 "lable" => "0"
@@ -374,6 +398,7 @@ class UpdateAllSku
         $model = $this->_byndersycData->create();
         $data_image_data = [
             'sku' => $insert_data['sku'],
+            'alias_sku' => $insert_data['alias_sku'],
             'bynder_sync_data' => $insert_data['message'],
             'bynder_data_type' => $insert_data['data_type'],
             'lable' => $insert_data['lable']
@@ -425,6 +450,7 @@ class UpdateAllSku
         } catch (Exception $e) {
             $insert_data = [
                 "sku" => $sku,
+                "alias_sku" => null,
                 "message" => $e->getMessage(),
                 'media_id' => "",
                 "data_type" => ""
@@ -908,7 +934,6 @@ class UpdateAllSku
                 }
             }
         }
-        
         if (count($data_arr) > 0) {
             $this->getProcessItem($data_arr, $data_val_arr);
         }
@@ -1197,7 +1222,8 @@ class UpdateAllSku
             if (!empty($log_documents)) {
                 $log_value_array = json_encode($log_documents, true);
                 $insert_data = [
-                    "sku" => $product_sku_key . " alias sku " . $alias_key,
+                    "sku" => $product_sku_key,
+                    "alias_sku" => $alias_key,
                     "message" => $log_value_array,
                     "data_type" => "3",
                     "lable" => 1
@@ -1308,7 +1334,6 @@ class UpdateAllSku
                         }
                     }
                 }
-                
                 // Process roles
                 $replacementRoles = ["Base", "Small", "Swatch", "Thumbnail"];
                 $flags = true;
@@ -1377,7 +1402,8 @@ class UpdateAllSku
                 // Insert log for images
                 if (!empty($log_data)) {
                     $insert_data = [
-                        "sku" => $product_sku_key . " alias sku " . $alias_key,
+                        "sku" => $product_sku_key,
+                        "alias_sku" => $alias_key,
                         "message" => $log_value_array,
                         "data_type" => "1",
                         "lable" => 1

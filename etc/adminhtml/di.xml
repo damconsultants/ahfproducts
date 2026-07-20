@@ -3,13 +3,25 @@
      <preference for="Magento\Framework\Data\Form\Element\Editor" type="DamConsultants\Ahfproducts\Data\Form\Element\Editor" />
      <preference for="Magento\Cron\Model\Config\Source\Frequency" type="DamConsultants\Ahfproducts\Model\Config\Source\Frequency" />
      <virtualType name="Magento\Catalog\Ui\DataProvider\Product\Form\Modifier\Pool">
-    <arguments>
-        <argument name="modifiers" xsi:type="array">
-            <item name="customTab" xsi:type="array">
-                <item name="class" xsi:type="string">DamConsultants\Ahfproducts\Ui\DataProvider\Product\Form\Modifier\NewField</item>
-                <item name="sortOrder" xsi:type="number">10</item>
-            </item>
-        </argument>
-    </arguments>
-</virtualType>
+        <arguments>
+            <argument name="modifiers" xsi:type="array">
+                <item name="customTab" xsi:type="array">
+                    <item name="class" xsi:type="string">DamConsultants\Ahfproducts\Ui\DataProvider\Product\Form\Modifier\NewField</item>
+                    <item name="sortOrder" xsi:type="number">10</item>
+                </item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <type name="Magento\Catalog\Ui\DataProvider\Product\Form\Modifier\Related">
+        <plugin
+            name="damconsultants_related_thumbnail_plugin"
+            type="DamConsultants\Ahfproducts\Plugin\Catalog\Ui\DataProvider\Product\Form\Modifier\RelatedPlugin"
+            sortOrder="10"/>
+    </type>
+    <type name="Magento\Catalog\Ui\Component\Listing\Columns\Thumbnail">
+        <plugin
+            name="ahfproducts_admin_thumbnail_plugin"
+            type="DamConsultants\Ahfproducts\Plugin\Catalog\ThumbnailPlugin"
+            sortOrder="10"/>
+    </type>
 </config>

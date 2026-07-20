@@ -10,6 +10,7 @@ use Magento\Framework\View\Asset\Repository as AssetRepository;
 use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Company\Api\CompanyManagementInterface;
+use DamConsultants\Ahfproducts\Helper\Data;
 
 class ImageFactoryPlugin
 {
@@ -37,6 +38,7 @@ class ImageFactoryPlugin
      * @var CompanyManagementInterface
      */
     private $companyManagement;
+    protected $datahelper;
 
     /**
      * Constructor
@@ -52,13 +54,15 @@ class ImageFactoryPlugin
         AssetRepository $assetRepository,
         CustomerSession $customerSession,
         CustomerRepositoryInterface $customerRepository,
-        CompanyManagementInterface $companyManagement
+        CompanyManagementInterface $companyManagement,
+        Data $dataHelper
     ) {
         $this->productRepository = $productRepository;
         $this->assetRepository = $assetRepository;
         $this->customerSession = $customerSession;
         $this->customerRepository = $customerRepository;
         $this->companyManagement = $companyManagement;
+        $this->datahelper = $dataHelper;
     }
 
     /**
@@ -115,57 +119,17 @@ class ImageFactoryPlugin
     }
 
     /**
-     * Check if image is authorized for current customer
-     *
-     * @param array $imageData
-     * @param array|null $customerData
-     * @return bool
-     */
-    private function isImageAuthorized($imageData, $customerData)
-    {
-        // If no customer is logged in, show only images without alias restrictions
-        if (empty($customerData) || empty($customerData['customer_numbers'])) {
-            // Only show images that don't have alias restrictions
-            if (isset($imageData['all_alias_identifier']) && !empty($imageData['all_alias_identifier'])) {
-                return false;
-            }
-            return true;
-        }
-
-        // Check if image has alias identifiers
-        if (isset($imageData['all_alias_identifier']) && !empty($imageData['all_alias_identifier'])) {
-            $aliasIdentifiers = array_map('trim', explode(',', $imageData['all_alias_identifier']));
-            
-            // Check if any customer number matches the image's alias
-            foreach ($customerData['customer_numbers'] as $customerNumber) {
-                if (in_array($customerNumber, $aliasIdentifiers)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // If no alias identifiers, image is visible to all
-        return true;
-    }
-
-    /**
      * Find image URL by role and SKU with authorization check
      *
      * @param array $imageData
      * @param string $sku
      * @param string $role
-     * @param array|null $customerData
      * @return string|null
      */
-    private function findImageByRole($imageData, $sku, $role, $customerData)
+    private function findImageByRole($imageData,$sku,$role)
     {
         if (isset($imageData[$sku]) && is_array($imageData[$sku])) {
             foreach ($imageData[$sku] as $image) {
-                // Check authorization first
-                if (!$this->isImageAuthorized($image, $customerData)) {
-                    continue;
-                }
 
                 if (isset($image['image_role']) && 
                     is_array($image['image_role']) && 
@@ -184,83 +148,18 @@ class ImageFactoryPlugin
      *
      * @param array $imageData
      * @param string $sku
-     * @param array|null $customerData
      * @return string|null
      */
-    private function findAnyImage($imageData, $sku, $customerData)
+    private function findAnyImage($imageData,$sku)
     {
         if (isset($imageData[$sku]) && is_array($imageData[$sku])) {
             foreach ($imageData[$sku] as $image) {
-                // Check authorization first
-                if (!$this->isImageAuthorized($image, $customerData)) {
-                    continue;
-                }
 
                 if (isset($image['item_type']) && 
                     $image['item_type'] === 'IMAGE' &&
                     isset($image['thum_url']) &&
                     !empty(trim($image['thum_url']))) {
                     return trim($image['thum_url']);
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Find image URL by role across all SKUs with authorization check
-     *
-     * @param array $imageData
-     * @param string $role
-     * @param array|null $customerData
-     * @return string|null
-     */
-    private function findImageByRoleAnySku($imageData, $role, $customerData)
-    {
-        foreach ($imageData as $sku => $images) {
-            if (is_array($images)) {
-                foreach ($images as $image) {
-                    // Check authorization first
-                    if (!$this->isImageAuthorized($image, $customerData)) {
-                        continue;
-                    }
-
-                    if (isset($image['image_role']) && 
-                        is_array($image['image_role']) && 
-                        in_array($role, $image['image_role']) &&
-                        isset($image['thum_url']) &&
-                        !empty(trim($image['thum_url']))) {
-                        return trim($image['thum_url']);
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Find any image across all SKUs with authorization check
-     *
-     * @param array $imageData
-     * @param array|null $customerData
-     * @return string|null
-     */
-    private function findAnyImageAnySku($imageData, $customerData)
-    {
-        foreach ($imageData as $sku => $images) {
-            if (is_array($images)) {
-                foreach ($images as $image) {
-                    // Check authorization first
-                    if (!$this->isImageAuthorized($image, $customerData)) {
-                        continue;
-                    }
-
-                    if (isset($image['item_type']) && 
-                        $image['item_type'] === 'IMAGE' &&
-                        isset($image['thum_url']) &&
-                        !empty(trim($image['thum_url']))) {
-                        return trim($image['thum_url']);
-                    }
                 }
             }
         }
@@ -286,63 +185,58 @@ class ImageFactoryPlugin
         ?array $attributes = null
     ) {
         $attributes = $attributes ?? [];
-        $productDetails = $this->productRepository->getById($product->getId());
-        $useBynderCdn = $productDetails->getData('use_bynder_cdn');
-        $bynderImages = $productDetails->getData('bynder_multi_img');
-
-        // Get customer data for authorization
-        $customerData = $this->getCustomerData();
-
+    
+        // Use the loaded product instead of reloading from repository
+        $useBynderCdn = (bool)$product->getData('use_bynder_cdn');
+        $bynderImages = $product->getData('bynder_multi_img');
+    
+        $imageUrl = null;
+    
         if ($useBynderCdn && !empty($bynderImages)) {
+    
             $imageData = json_decode($bynderImages, true);
-            $imageUrl = null;
+    
             $productSku = $product->getSku();
-
-            if (is_array($imageData) && !empty($imageData)) {
-                // Priority 1: Small role for specific SKU (authorized)
-                $imageUrl = $this->findImageByRole($imageData, $productSku, 'Small', $customerData);
-                
-                // Priority 2: Small role (any SKU) (authorized)
-                if (empty($imageUrl)) {
-                    $imageUrl = $this->findImageByRoleAnySku($imageData, 'Small', $customerData);
-                }
-
-                // Priority 3: Thumbnail role for specific SKU (authorized)
-                if (empty($imageUrl)) {
-                    $imageUrl = $this->findImageByRole($imageData, $productSku, 'Thumbnail', $customerData);
-                }
-
-                // Priority 4: Thumbnail role (any SKU) (authorized)
-                if (empty($imageUrl)) {
-                    $imageUrl = $this->findImageByRoleAnySku($imageData, 'Thumbnail', $customerData);
-                }
-
-                // Priority 5: Base role for specific SKU (authorized)
-                if (empty($imageUrl)) {
-                    $imageUrl = $this->findImageByRole($imageData, $productSku, 'Base', $customerData);
-                }
-
-                // Priority 6: Base role (any SKU) (authorized)
-                if (empty($imageUrl)) {
-                    $imageUrl = $this->findImageByRoleAnySku($imageData, 'Base', $customerData);
-                }
-
-                // Priority 7: Any image for specific SKU (authorized)
-                if (empty($imageUrl)) {
-                    $imageUrl = $this->findAnyImage($imageData, $productSku, $customerData);
-                }
-
-                // Priority 8: Any image (any SKU) (authorized)
-                if (empty($imageUrl)) {
-                    $imageUrl = $this->findAnyImageAnySku($imageData, $customerData);
+    
+            // Get customer data
+            $customerData = $this->getCustomerData();
+    
+            if (!empty($customerData)) {
+                $aliasSku = $this->datahelper->getAliasSkubyaliasidentifier(
+                    $productSku,
+                    $customerData
+                );
+    
+                if (!empty($aliasSku)) {
+                    $productSku = $aliasSku;
                 }
             }
-
-            if ($imageUrl) {
-                $attributes['src'] = $imageUrl;
+    
+            if (is_array($imageData)) {
+    
+                $imageUrl = $this->findImageByRole($imageData, $productSku, 'Small');
+    
+                if (!$imageUrl) {
+                    $imageUrl = $this->findImageByRole($imageData, $productSku, 'Thumbnail');
+                }
+    
+                if (!$imageUrl) {
+                    $imageUrl = $this->findImageByRole($imageData, $productSku, 'Base');
+                }
+    
+                if (!$imageUrl) {
+                    $imageUrl = $this->findAnyImage($imageData, $productSku);
+                }
             }
         }
-
+    
+        // ALWAYS set image
+        if (!empty($imageUrl)) {
+            $attributes['src'] = $imageUrl;
+        } else {
+            $attributes['src'] = $this->datahelper->getPlaceHolderImage();
+        }
+    
         return $proceed($product, $imageId, $attributes);
     }
 }

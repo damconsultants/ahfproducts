@@ -166,6 +166,7 @@ class FeatchNullDataToMagento
             foreach ($productSku_array as $sku) {
                 if ($sku != "") {
                     $aliasSku = $this->datahelper->getSkuByAlias($sku);
+                    $is_sku_made_alias = 0;
                     if ($aliasSku === null || empty($aliasSku)) {
                         $aliasSku = [
                             [
@@ -173,7 +174,9 @@ class FeatchNullDataToMagento
                                 'all_alias_identifier' => $sku
                             ]
                         ];
+                        $is_sku_made_alias = 1;
                     } elseif (!is_array($aliasSku) || !isset($aliasSku[0]) || !is_array($aliasSku[0])) {
+                        $is_sku_made_alias = 1;
                         $aliasSku = [
                             [
                                 'alias_sku' => $this->normalizeStringValue($aliasSku),
@@ -210,7 +213,8 @@ class FeatchNullDataToMagento
                                         );
                                     } catch (Exception $e) {
                                         $insert_data = [
-                                            "sku" => $sku ." alias sku ". $alias_sku_value,
+                                            "sku" => $sku,
+                                            'alias_sku' => $alias_sku_value,
                                             "message" => $e->getMessage(),
                                             "data_type" => "",
                                             'media_id' => "",
@@ -223,7 +227,8 @@ class FeatchNullDataToMagento
                                     }
                                 } else {
                                     $insert_data = [
-                                        "sku" => $sku ." alias sku ". $alias_sku_value,
+                                        "sku" => $sku,
+                                        'alias_sku' => $alias_sku_value,
                                         "message" => $convert_array['data'],
                                         "data_type" => "",
                                         'media_id' => "",
@@ -236,7 +241,8 @@ class FeatchNullDataToMagento
                                 }
                             } else {
                                 $insert_data = [
-                                    "sku" => $sku ." alias sku ". $alias_sku_value,
+                                    "sku" => $sku,
+                                    'alias_sku' => $alias_sku_value,
                                     "message" => 'Please Select The Metaproperty First.....',
                                     "data_type" => "",
                                     'media_id' => "",
@@ -249,6 +255,80 @@ class FeatchNullDataToMagento
                         } else {
                             $insert_data = [
                                 "sku" => $sku,
+                                'alias_sku' => $alias_sku_value,
+                                "message" => "Something problem in DAM side please contact to developer.",
+                                "data_type" => "",
+                                'media_id' => "",
+                                'remove_for_magento' => '',
+                                'added_on_cron_compactview' => '',
+                                "lable" => "0"
+                            ];
+                            $this->getInsertDataTable($insert_data);
+                        }
+                    }
+                    if($is_sku_made_alias == 0){
+                        $all_alias_identifier = array();
+                        $bd_sku = trim((string) preg_replace('/[^A-Za-z0-9-]/', '_', $sku));
+                        $get_data = $this->datahelper->getImageSyncWithProperties($bd_sku, $property_id, $collection_value);
+                        if (!empty($get_data) && $this->getIsJSON($get_data)) {
+                            $respon_array = json_decode($get_data, true);
+                            if ($respon_array['status'] == 1) {
+                                $convert_array = json_decode($respon_array['data'], true);
+                                if ($convert_array['status'] == 1) {
+                                    $current_sku = $sku;
+                                    try {
+                                        $this->getDataItem(
+                                            $convert_array,
+                                            $collection_slug_val,
+                                            $current_sku,
+                                            $sku,
+                                            $all_alias_identifier_value
+                                        );
+                                    } catch (Exception $e) {
+                                        $insert_data = [
+                                            "sku" => $sku,
+                                            'alias_sku' => null,
+                                            "message" => $e->getMessage(),
+                                            "data_type" => "",
+                                            'media_id' => "",
+                                            'remove_for_magento' => '',
+                                            'added_on_cron_compactview' => '',
+                                            "lable" => "0"
+                                        ];
+                                        $this->getInsertDataTable($insert_data);
+                                        $this->updateBynderCronSync($sku);
+                                    }
+                                } else {
+                                    $insert_data = [
+                                        "sku" => $sku,
+                                        'alias_sku' => null,
+                                        "message" => $convert_array['data'],
+                                        "data_type" => "",
+                                        'media_id' => "",
+                                        'remove_for_magento' => '',
+                                        'added_on_cron_compactview' => '',
+                                        "lable" => "0"
+                                    ];
+                                    $this->getInsertDataTable($insert_data);
+                                    $this->updateBynderCronSync($sku);
+                                }
+                            } else {
+                                $insert_data = [
+                                    "sku" => $sku,
+                                    'alias_sku' => null,
+                                    "message" => 'Please Select The Metaproperty First.....',
+                                    "data_type" => "",
+                                    'media_id' => "",
+                                    'remove_for_magento' => '',
+                                    'added_on_cron_compactview' => '',
+                                    "lable" => "0"
+                                ];
+                                $this->getInsertDataTable($insert_data);
+                            }
+                        } else {
+                            $insert_data = [
+                                "sku" => $sku,
+                                'alias_sku' => null,
                                 "message" => "Something problem in DAM side please contact to developer.",
                                 "data_type" => "",
                                 'media_id' => "",
@@ -357,6 +437,7 @@ class FeatchNullDataToMagento
         $model = $this->_byndersycData->create();
         $data_image_data = [
             'sku' => $insert_data['sku'],
+            'alias_sku' => $insert_data['alias_sku'],
             'bynder_data' =>$insert_data['message'],
             'bynder_data_type' => $insert_data['data_type'],
             'media_id' => $insert_data['media_id'],
@@ -747,7 +828,8 @@ class FeatchNullDataToMagento
                                     "all_alias_identifier" => $this->normalizeStringValue($byd_all_alias_identifier[$vv] ?? $byd_all_alias_identifier[0] ?? '')
                                 ];
                                 $data_image_data = [
-                                    'sku' => $product_sku_key ." alias sku ". $alias_key,
+                                    'sku' => $product_sku_key,
+                                    'alias_sku' => $alias_key,
                                     'message' => $image_item,
                                     'data_type' => '1',
                                     'media_id' => $bynder_media_id[$vv],
@@ -772,7 +854,8 @@ class FeatchNullDataToMagento
                                     "all_alias_identifier" => $this->normalizeStringValue($byd_all_alias_identifier[$vv] ?? $byd_all_alias_identifier[0] ?? '')
                                 ];
                                 $data_video_data = [
-                                    'sku' => $product_sku_key ." alias sku ". $alias_key,
+                                    'sku' => $product_sku_key,
+                                    'alias_sku' => $alias_key,
                                     'message' => $item_url[0],
                                     'data_type' => '3',
                                     'media_id' => $media_video_explode[$vv],
@@ -912,7 +995,8 @@ class FeatchNullDataToMagento
 								];
 							
 								$data_doc_value = [
-									'sku' => $product_sku_key ." alias sku ". $alias_key,
+									'sku' => $product_sku_key,
+                                    'alias_sku' => "",
 									'message' => $item_url[0],
 									'data_type' => '2',
 									'media_id' => $bynder_media_id[$vv],
@@ -934,7 +1018,8 @@ class FeatchNullDataToMagento
             }
         } catch (Exception $e) {
             $insert_data = [
-                'sku' => $product_sku_key ." alias sku ". $alias_key,
+                'sku' => $product_sku_key,
+                'alias_sku' => "",
                 "message" => $e->getMessage(),
                 "data_type" => "",
                 'media_id' => "",

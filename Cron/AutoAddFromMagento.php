@@ -162,7 +162,35 @@ class AutoAddFromMagento
         if (count($productSku_array) > 0) {
             foreach ($productSku_array as $sku) {
                 if ($sku != "") {
+                    $storeId = $this->storeManagerInterface->getStore()->getId();
+                    $_product = $this->_productRepository->get($sku, false, $storeId, true);
+                    $product_ids = $_product->getId();
+                    $bynder_multi_img = $_product->getBynderMultiImg();
+                    $bynder_doc = $_product->getBynderDocument();
+                    if (!empty($bynder_multi_img)) {
+                        $updated_values = [
+                            'bynder_multi_img' => null,
+                            'bynder_auto_replace' => null
+                        ];
+                        $this->action->updateAttributes(
+                            [$product_ids],
+                            $updated_values,
+                            $storeId
+                        );
+                    }
+                    if (!empty($bynder_doc)) {
+                        $updated_values = [
+                            'bynder_document' => null,
+                            'bynder_auto_replace' => null
+                        ];
+                        $this->action->updateAttributes(
+                            [$product_ids],
+                            $updated_values,
+                            $storeId
+                        );
+                    }
                     $aliasSku = $this->datahelper->getSkuByAlias($sku);
+                    $is_sku_made_alias = 0;
                     if ($aliasSku === null || empty($aliasSku)) {
                         $aliasSku = [
                             [
@@ -170,7 +198,9 @@ class AutoAddFromMagento
                                 'all_alias_identifier' => $sku
                             ]
                         ];
+                        $is_sku_made_alias = 1;
                     } elseif (!is_array($aliasSku) || !isset($aliasSku[0]) || !is_array($aliasSku[0])) {
+                        $is_sku_made_alias = 1;
                         $aliasSku = [
                             [
                                 'alias_sku' => $this->normalizeStringValue($aliasSku),
@@ -207,7 +237,8 @@ class AutoAddFromMagento
                                         );
                                     } catch (Exception $e) {
                                         $insert_data = [
-                                            'sku' => $sku ." alias sku ". $alias_sku_value,
+                                            'sku' => $sku,
+                                            'alias_sku' => $alias_sku_value,
                                             "message" => $e->getMessage(),
                                             'media_id' => "",
                                             "data_type" => ""
@@ -216,7 +247,8 @@ class AutoAddFromMagento
                                     }
                                 } else {
                                     $insert_data = [
-                                        "sku" => $sku ." alias sku ". $alias_sku_value,
+                                        'sku' => $sku,
+                                        'alias_sku' => $alias_sku_value,
                                         "message" => $convert_array['data'],
                                         'media_id' => "",
                                         "data_type" => ""
@@ -225,7 +257,8 @@ class AutoAddFromMagento
                                 }
                             } else {
                                 $insert_data = [
-                                    "sku" => $sku ." alias sku ". $alias_sku_value,
+                                    'sku' => $sku,
+                                    'alias_sku' => $alias_sku_value,
                                     "message" => 'Please Select The Metaproperty First.....',
                                     'media_id' => "",
                                     "data_type" => ""
@@ -234,7 +267,67 @@ class AutoAddFromMagento
                             }
                         } else {
                             $insert_data = [
-                                "sku" => $sku,
+                                'sku' => $sku,
+                                'alias_sku' => $alias_sku_value,
+                                "message" => "Something problem in DAM side please contact to developer.",
+                                'media_id' => "",
+                                "data_type" => ""
+                            ];
+                            $this->getInsertDataTable($insert_data);
+                        }
+                    }
+                    if ($is_sku_made_alias == 0) {
+                        $bd_sku = trim((string) preg_replace('/[^A-Za-z0-9-]/', '_', $sku));
+                        $all_alias_identifier = array();
+                        $get_data = $this->datahelper->getImageSyncWithProperties($bd_sku, $property_id, $collection_value);
+                        if (!empty($get_data) && $this->getIsJSON($get_data)) {
+                            $respon_array = json_decode($get_data, true);
+                            if ($respon_array['status'] == 1) {
+                                $convert_array = json_decode($respon_array['data'], true);
+                                if ($convert_array['status'] == 1) {
+                                    $current_sku = $sku;
+                                    try {
+                                        $this->getDataItem(
+                                            $convert_array,
+                                            $collection_slug_val,
+                                            $current_sku,
+                                            $sku,
+                                            $all_alias_identifier_value
+                                        );
+                                    } catch (Exception $e) {
+                                        $insert_data = [
+                                            'sku' => $sku,
+                                            'alias_sku' => null,
+                                            "message" => $e->getMessage(),
+                                            'media_id' => "",
+                                            "data_type" => ""
+                                        ];
+                                        $this->getInsertDataTable($insert_data);
+                                    }
+                                } else {
+                                    $insert_data = [
+                                        'sku' => $sku,
+                                        'alias_sku' => null,
+                                        "message" => $convert_array['data'],
+                                        'media_id' => "",
+                                        "data_type" => ""
+                                    ];
+                                    $this->getInsertDataTable($insert_data);
+                                }
+                            } else {
+                                $insert_data = [
+                                    'sku' => $sku,
+                                    'alias_sku' => null,
+                                    "message" => 'Please Select The Metaproperty First.....',
+                                    'media_id' => "",
+                                    "data_type" => ""
+                                ];
+                                $this->getInsertDataTable($insert_data);
+                            }
+                        } else {
+                            $insert_data = [
+                                'sku' => $sku,
+                                'alias_sku' => null,
                                 "message" => "Something problem in DAM side please contact to developer.",
                                 'media_id' => "",
                                 "data_type" => ""
@@ -337,6 +430,7 @@ class AutoAddFromMagento
         $model = $this->_bynderAutoReplaceData->create();
         $data_image_data = [
             'sku' => $insert_data['sku'],
+            'alias_sku' => $insert_data['alias_sku'],
             'bynder_data' =>$insert_data['message'],
             'media_id' => $insert_data['media_id'],
             'bynder_data_type' => $insert_data['data_type']
@@ -914,7 +1008,8 @@ class AutoAddFromMagento
                         if (!empty($log_images)) {
                             $log_value_array = json_encode($log_images, true);
                             $insert_data = [
-                                'sku' => $product_sku_key ." alias sku ". $alias_key,
+                                'sku' => $product_sku_key,
+                                'alias_sku' => $alias_key,
                                 'message' => $log_value_array,
                                 'media_id' => implode(',', $m_id),
                                 'data_type' => '1',
@@ -925,7 +1020,8 @@ class AutoAddFromMagento
                         if (!empty($log_videos)) {
                             $log_value_array = json_encode($log_videos, true);
                             $insert_data = [
-                                'sku' => $product_sku_key ." alias sku ". $alias_key,
+                                'sku' => $product_sku_key,
+                                'alias_sku' => $alias_key,
                                 'message' => $log_value_array,
                                 'media_id' => implode(',', $m_id),
                                 'data_type' => '3',
@@ -975,7 +1071,8 @@ class AutoAddFromMagento
                         if (!empty($log_documents)) {
                             $log_value_array = json_encode($log_documents, true);
                             $insert_data = [
-                                'sku' => $product_sku_key ." alias sku ". $alias_key,
+                                'sku' => $product_sku_key,
+                                'alias_sku' => $alias_key,
                                 'message' => $log_value_array,
                                 'media_id' => '',
                                 'data_type' => '2',
@@ -987,7 +1084,8 @@ class AutoAddFromMagento
             }
         } catch (Exception $e) {
             $insert_data = [
-                "sku" => $product_sku_key ." alias sku ". $alias_key,
+                'sku' => $product_sku_key,
+                'alias_sku' => $alias_key,
                 "message" => $e->getMessage(),
                 'media_id' => "",
                 "data_type" => ""

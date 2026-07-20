@@ -75,6 +75,7 @@ class Data extends AbstractHelper
     public const FETCH_PRODUCT_SKU_LIMIT = 'cronimageconfig/configurable_cron/fetch_product_sku_limt';
     public const AUTO_PRODUCT_SKU_LIMIT = 'cronimageconfig/auto_add_bynder/auto_product_sku_limt';
     public const PRODUCT_SKU_LIMIT = 'cronimageconfig/set_limit_product_sku/product_sku_limt';
+    public const PLACEHOLDER_IMAGE = 'byndeimageconfig/bynder_image/placeholder_base';
     public const API_CALLED = 'https://developer.thedamconsultants.com/';
     public const IFRAME_URL = 'https://trello.thedamconsultants.com/bynder-registration';
 
@@ -288,6 +289,15 @@ class Data extends AbstractHelper
     public function getPermanenToken()
     {
         return (string) $this->getStoreConfig(self::PERMANENT_TOKEN);
+    }
+    /**
+     * Get Place Holder Image
+     *
+     * @return $this
+     */
+    public function getPlaceHolderImage()
+    {
+        return (string) $this->getStoreConfig(self::PLACEHOLDER_IMAGE);
     }
     /**
      * Get Load Credential
@@ -971,6 +981,26 @@ class Data extends AbstractHelper
         $aliascollection->setPageSize(1);
         $sku = $aliascollection->getFirstItem()->getSku();
         return $sku;*/
+    }
+    /**
+     * Alias Sku
+     *
+     * @param string $bd_sku
+     * @return $this
+     */
+    public function getAliasSkubyaliasidentifier($sku, $customerData)
+    {
+        $aliascollection = $this->aliasCollectionFactory->create();
+        $aliascollection->addFieldToFilter('sku', $sku);
+        $aliascollection->addFieldToFilter('alias_identifier', ['in' => $customerData['customer_numbers']]);
+
+        $item = $aliascollection->getFirstItem();
+
+        if ($item->getId()) {
+            return $item->getAliasSku();
+        }
+
+        return $sku;
     }
 
 }

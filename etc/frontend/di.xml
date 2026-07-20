@@ -18,4 +18,10 @@
     <type name="Magento\Catalog\Block\Product\ImageFactory">
         <plugin name="ahfproducts_image_plugin" type="DamConsultants\Ahfproducts\Plugin\Catalog\Block\Product\ImageFactoryPlugin" sortOrder="1" />
     </type>
+    <type name="Magento\Wishlist\CustomerData\Wishlist">
+        <plugin name="ahf_wishlist_images" type="DamConsultants\Ahfproducts\Plugin\Wishlist\CustomerData\WishlistPlugin"/>
+    </type>
+    <type name="Magento\RequisitionList\Block\Requisition\View\Item">
+        <plugin name="damconsultants_requisition_image" type="DamConsultants\Ahfproducts\Plugin\RequisitionList\ItemPlugin"/>
+    </type>
 </config>

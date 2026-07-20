@@ -7,6 +7,7 @@ namespace DamConsultants\Ahfproducts\Ui\Component\Listing\Column;
 
 use Magento\Framework\View\Element\UiComponentFactory;
 use Magento\Framework\View\Element\UiComponent\ContextInterface;
+use DamConsultants\Ahfproducts\Helper\Data;
 
 class Thumbnail extends \Magento\Ui\Component\Listing\Columns\Column
 {
@@ -27,6 +28,10 @@ class Thumbnail extends \Magento\Ui\Component\Listing\Columns\Column
      * @var \Magento\Catalog\Model\ProductRepository
      */
     protected $_productRepository;
+    /**
+     * @var Data
+     */
+    protected $dataHelper;
 
     /**
      * Constructor
@@ -36,6 +41,7 @@ class Thumbnail extends \Magento\Ui\Component\Listing\Columns\Column
      * @param \Magento\Catalog\Helper\Image $imageHelper
      * @param \Magento\Framework\UrlInterface $urlBuilder
      * @param \Magento\Catalog\Model\ProductRepository $productRepository
+     * @param Data $dataHelper,
      * @param array $components
      * @param array $data
      */
@@ -45,6 +51,7 @@ class Thumbnail extends \Magento\Ui\Component\Listing\Columns\Column
         \Magento\Catalog\Helper\Image $imageHelper,
         \Magento\Framework\UrlInterface $urlBuilder,
         \Magento\Catalog\Model\ProductRepository $productRepository,
+        Data $dataHelper,
         array $components = [],
         array $data = []
     ) {
@@ -53,6 +60,7 @@ class Thumbnail extends \Magento\Ui\Component\Listing\Columns\Column
         $this->imageHelper = $imageHelper;
         $this->urlBuilder = $urlBuilder;
         $this->_productRepository = $productRepository;
+        $this->dataHelper = $dataHelper;
     }
 
     /**
@@ -129,15 +137,13 @@ class Thumbnail extends \Magento\Ui\Component\Listing\Columns\Column
             if (!$thumbnailFound) {
 
                 $product = new \Magento\Framework\DataObject($item);
-
-                $imageHelper = $this->imageHelper->init(
-                    $product,
-                    'product_listing_thumbnail'
-                );
-
-                $item[$fieldName . '_src'] = $imageHelper->getUrl();
-                $item[$fieldName . '_alt'] = $this->getAlt($item) ?: $imageHelper->getLabel();
-
+            
+                $placeholder = $this->dataHelper->getPlaceHolderImage();
+            
+                $item[$fieldName . '_src'] = $placeholder;
+                $item[$fieldName . '_orig_src'] = $placeholder;
+                $item[$fieldName . '_alt'] = $this->getAlt($item);
+            
                 $item[$fieldName . '_link'] = $this->urlBuilder->getUrl(
                     'catalog/product/edit',
                     [
@@ -145,13 +151,6 @@ class Thumbnail extends \Magento\Ui\Component\Listing\Columns\Column
                         'store' => $this->context->getRequestParam('store')
                     ]
                 );
-
-                $origImageHelper = $this->imageHelper->init(
-                    $product,
-                    'product_listing_thumbnail_preview'
-                );
-
-                $item[$fieldName . '_orig_src'] = $origImageHelper->getUrl();
             }
         }
 

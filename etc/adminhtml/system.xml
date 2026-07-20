@@ -65,7 +65,18 @@
                 </field>
             </group>
         </section>
-        <section id="byndersyncaliasdata" translate="label" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+        <section id="byndeimageconfig" translate="label" type="text" sortOrder="90" showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>Placeholder Image</label>
+            <tab>bynder_tab</tab>
+            <resource>DamConsultants_Idex::image</resource>
+            <group id="bynder_image" translate="label" type="text" sortOrder="1" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Placeholder Image Configuration</label>
+				<field id="placeholder_base" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Placeholder Image</label>
+                </field>
+            </group> 
+        </section>
+        <!-- <section id="byndersyncaliasdata" translate="label" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
             <label>Sync. Alias AHF Data</label>
             <tab>bynder_tab</tab>
             <resource>DamConsultants_Ahfproducts::config</resource>
@@ -84,7 +95,7 @@
                     <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\SyncAliasButton</frontend_model>
                 </field>
             </group>
-        </section>
+        </section> -->
         <section id="cronimageconfig" translate="label" sortOrder="90" showInDefault="1" showInWebsite="1" showInStore="1">
             <label>Cron Config</label>
             <tab>bynder_tab</tab>

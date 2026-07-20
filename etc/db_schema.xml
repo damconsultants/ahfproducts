@@ -16,6 +16,7 @@
    <table name="bynder_cron_data" resource="default" engine="innodb" comment="Bynder Cron Data Logs">
       <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
        <column xsi:type="text" name="sku" nullable="true"  comment="Product sku" />
+       <column xsi:type="text" name="alias_sku" nullable="true"  comment="Alias sku" />
       <column xsi:type="text" name="bynder_data" nullable="true"  comment="bynder data sync. image, doc, video" />
       <column xsi:type="text" name="bynder_data_type" nullable="true"  comment="1= Image , 2= doc,3= video" />
       <column xsi:type="text" name="media_id" nullable="true"  comment="Bynder Data Media id " />
@@ -31,6 +32,7 @@
    <table name="bynder_config_sync_data" resource="default" engine="innodb" comment="Bynder Sync Data Logs">
       <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
       <column xsi:type="text" name="sku" nullable="true"  comment="Product sku" />
+      <column xsi:type="text" name="alias_sku" nullable="true"  comment="Alias sku" />
       <column xsi:type="text" name="bynder_sync_data" nullable="true"  comment="bynder data sync. image, doc, video" />
       <column xsi:type="text" name="bynder_data_type" nullable="true"  comment="1= Image , 2= doc,3= video" />
       <column xsi:type="int" name="lable" nullable="false" comment="Label" />
@@ -76,6 +78,7 @@
    <table name="bynder_cron_replace_data" resource="default" engine="innodb" comment="Bynder Cron Replace Logs">
       <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
       <column xsi:type="text" name="sku" nullable="true"  comment="Product sku" />
+      <column xsi:type="text" name="alias_sku" nullable="true"  comment="Alias sku" />
       <column xsi:type="text" name="bynder_data" nullable="true"  comment="bynder data sync. image, doc, video" />
       <column xsi:type="text" name="media_id" nullable="true"  comment="Bynder Data Media id " />
       <column xsi:type="text" name="bynder_data_type" nullable="true"  comment="1= Image , 2= doc,3= video" />

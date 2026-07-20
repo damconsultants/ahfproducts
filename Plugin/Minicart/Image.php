@@ -6,6 +6,7 @@ use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Company\Api\CompanyManagementInterface;
 use Psr\Log\LoggerInterface;
+use DamConsultants\Ahfproducts\Helper\Data;
 
 class Image
 {
@@ -38,6 +39,8 @@ class Image
      * @var LoggerInterface
      */
     protected $logger;
+    protected $dataHelper;
+    private const DEFAULT_IMAGE = 'https://i0.wp.com/picjumbo.com/wp-content/uploads/silhouettes-of-hawaiian-palms-at-a-gorgeous-sunset-free-image.jpeg?h=800&quality=80';
 
     /**
      * Image constructor
@@ -55,7 +58,8 @@ class Image
         CustomerSession $customerSession,
         CustomerRepositoryInterface $customerRepository,
         CompanyManagementInterface $companyManagement,
-        LoggerInterface $logger
+        LoggerInterface $logger,
+        Data $dataHelper,
     ) {
         $this->_registry = $Registry;
         $this->product = $product;
@@ -63,6 +67,7 @@ class Image
         $this->customerRepository = $customerRepository;
         $this->companyManagement = $companyManagement;
         $this->logger = $logger;
+        $this->dataHelper = $dataHelper;
     }
 
     /**
@@ -118,128 +123,38 @@ class Image
         }
     }
 
-    /**
-     * Check if image is authorized for current customer
-     *
-     * @param array $imageData
-     * @param array|null $customerData
-     * @return bool
-     */
-    private function isImageAuthorized($imageData, $customerData)
+    private function getImageUrl(array $jsonData, string $sku): ?string
     {
-        // If no customer is logged in, show only images without alias restrictions
-        if (empty($customerData) || empty($customerData['customer_numbers'])) {
-            if (isset($imageData['all_alias_identifier']) && !empty($imageData['all_alias_identifier'])) {
-                return false;
-            }
-            return true;
-        }
-
-        // Check if image has alias identifiers
-        if (isset($imageData['all_alias_identifier']) && !empty($imageData['all_alias_identifier'])) {
-            $aliasIdentifiers = array_map('trim', explode(',', $imageData['all_alias_identifier']));
-            
-            foreach ($customerData['customer_numbers'] as $customerNumber) {
-                if (in_array($customerNumber, $aliasIdentifiers)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // If no alias identifiers, image is visible to all
-        return true;
-    }
-
-    /**
-     * Get authorized image URL for a specific SKU
-     *
-     * @param array $jsonValue
-     * @param string $sku
-     * @param array|null $customerData
-     * @return string|null
-     */
-    private function getAuthorizedImageUrl($jsonData, $sku, $customerData)
-    {
-        if (empty($jsonData) || !is_array($jsonData)) {
+        if (!isset($jsonData[$sku]) || !is_array($jsonData[$sku])) {
             return null;
         }
 
-        // First try to get images for specific SKU
-        $imagesToCheck = [];
-        if (isset($jsonData[$sku]) && is_array($jsonData[$sku])) {
-            $imagesToCheck = $jsonData[$sku];
-        } else {
-            // If no SKU-specific images, flatten all images
-            foreach ($jsonData as $skuKey => $images) {
-                if (is_array($images)) {
-                    $imagesToCheck = array_merge($imagesToCheck, $images);
-                }
-            }
-        }
-
-        // Sort images by is_order
-        usort($imagesToCheck, function ($a, $b) {
-            $orderA = isset($a['is_order']) ? (int)$a['is_order'] : 0;
-            $orderB = isset($b['is_order']) ? (int)$b['is_order'] : 0;
-            return $orderA <=> $orderB;
+        usort($jsonData[$sku], function ($a, $b) {
+            return ((int)($a['is_order'] ?? 0)) <=> ((int)($b['is_order'] ?? 0));
         });
 
-        // Priority 1: Thumbnail role
-        foreach ($imagesToCheck as $imageData) {
-            if (!$this->isImageAuthorized($imageData, $customerData)) {
-                continue;
-            }
+        $roles = ['Thumbnail', 'Base', 'Small'];
 
-            if (isset($imageData['image_role']) && is_array($imageData['image_role'])) {
-                if (in_array('Thumbnail', $imageData['image_role'])) {
-                    if (isset($imageData['thum_url']) && !empty(trim($imageData['thum_url']))) {
-                        return trim($imageData['thum_url']);
-                    }
+        foreach ($roles as $role) {
+            foreach ($jsonData[$sku] as $image) {
+
+                if (
+                    !empty($image['image_role']) &&
+                    in_array($role, $image['image_role']) &&
+                    !empty($image['thum_url'])
+                ) {
+                    return trim($image['thum_url']);
                 }
             }
         }
 
-        // Priority 2: Base role
-        foreach ($imagesToCheck as $imageData) {
-            if (!$this->isImageAuthorized($imageData, $customerData)) {
-                continue;
-            }
+        foreach ($jsonData[$sku] as $image) {
 
-            if (isset($imageData['image_role']) && is_array($imageData['image_role'])) {
-                if (in_array('Base', $imageData['image_role'])) {
-                    if (isset($imageData['thum_url']) && !empty(trim($imageData['thum_url']))) {
-                        return trim($imageData['thum_url']);
-                    }
-                }
-            }
-        }
-
-        // Priority 3: Small role
-        foreach ($imagesToCheck as $imageData) {
-            if (!$this->isImageAuthorized($imageData, $customerData)) {
-                continue;
-            }
-
-            if (isset($imageData['image_role']) && is_array($imageData['image_role'])) {
-                if (in_array('Small', $imageData['image_role'])) {
-                    if (isset($imageData['thum_url']) && !empty(trim($imageData['thum_url']))) {
-                        return trim($imageData['thum_url']);
-                    }
-                }
-            }
-        }
-
-        // Priority 4: Any image
-        foreach ($imagesToCheck as $imageData) {
-            if (!$this->isImageAuthorized($imageData, $customerData)) {
-                continue;
-            }
-
-            if (isset($imageData['item_type']) && $imageData['item_type'] === 'IMAGE') {
-                if (isset($imageData['thum_url']) && !empty(trim($imageData['thum_url']))) {
-                    return trim($imageData['thum_url']);
-                }
+            if (
+                ($image['item_type'] ?? '') == 'IMAGE' &&
+                !empty($image['thum_url'])
+            ) {
+                return trim($image['thum_url']);
             }
         }
 
@@ -265,6 +180,15 @@ class Image
             $product = $item->getProduct();
             $productId = $product->getId();
             $productSku = $product->getSku();
+
+            $customerData = $this->getCustomerData();
+
+            if (!empty($customerData)) {
+                $productSku = $this->dataHelper->getAliasSkubyaliasidentifier(
+                    $productSku,
+                    $customerData
+                );
+            }
             
             $this->logger->info('Processing product: ' . $productSku . ' (ID: ' . $productId . ')');
             
@@ -285,12 +209,16 @@ class Image
                     $this->logger->info('JSON decoded successfully, keys: ' . print_r(array_keys($jsonValue), true));
                     
                     // Try to get authorized image for this SKU
-                    $imageUrl = $this->getAuthorizedImageUrl($jsonValue, $productSku, $customerData);
+                    $imageUrl = $this->getImageUrl(
+                        $jsonValue,
+                        $productSku
+                    );
                     
                     if ($imageUrl) {
                         $data['product_image']['src'] = $imageUrl;
                         $this->logger->info('Updated image URL: ' . $imageUrl);
                     } else {
+                        $data['product_image']['src'] = $this->dataHelper->getPlaceHolderImage();;
                         $this->logger->info('No authorized image found, keeping default');
                     }
                 } else {

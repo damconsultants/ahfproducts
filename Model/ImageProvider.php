@@ -13,6 +13,7 @@ use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Company\Api\CompanyManagementInterface;
+use DamConsultants\Ahfproducts\Helper\Data;
 
 class ImageProvider extends CoreImageProvider
 {
@@ -25,6 +26,9 @@ class ImageProvider extends CoreImageProvider
     private $customerSession;
     private $customerRepository;
     private $companyManagement;
+    protected $dataHelper;
+    private const DEFAULT_IMAGE = 'https://i0.wp.com/picjumbo.com/wp-content/uploads/silhouettes-of-hawaiian-palms-at-a-gorgeous-sunset-free-image.jpeg?h=800&quality=80';
+
 
     public function __construct(
         CartItemRepositoryInterface $itemRepository,
@@ -33,6 +37,7 @@ class ImageProvider extends CoreImageProvider
         CustomerSession $customerSession,
         CustomerRepositoryInterface $customerRepository,
         CompanyManagementInterface $companyManagement,
+        Data $dataHelper,
         ?DefaultItem $customerDataItem = null,
         ?Image $imageHelper = null,
         ?ItemResolverInterface $itemResolver = null
@@ -43,6 +48,7 @@ class ImageProvider extends CoreImageProvider
         $this->customerSession = $customerSession;
         $this->customerRepository = $customerRepository;
         $this->companyManagement = $companyManagement;
+        $this->dataHelper = $dataHelper;
         $this->customerDataItem = $customerDataItem ?: ObjectManager::getInstance()->get(DefaultItem::class);
         $this->imageHelper = $imageHelper ?: ObjectManager::getInstance()->get(Image::class);
         $this->itemResolver = $itemResolver ?: ObjectManager::getInstance()->get(ItemResolverInterface::class);
@@ -101,174 +107,6 @@ class ImageProvider extends CoreImageProvider
         }
     }
 
-    /**
-     * Check if image is authorized for current customer
-     *
-     * @param array $imageData
-     * @param array|null $customerData
-     * @return bool
-     */
-    private function isImageAuthorized($imageData, $customerData)
-    {
-        // If no customer is logged in, show only images without alias restrictions
-        if (empty($customerData) || empty($customerData['customer_numbers'])) {
-            // Only show images that don't have alias restrictions
-            if (isset($imageData['all_alias_identifier']) && !empty($imageData['all_alias_identifier'])) {
-                return false;
-            }
-            return true;
-        }
-
-        // Check if image has alias identifiers
-        if (isset($imageData['all_alias_identifier']) && !empty($imageData['all_alias_identifier'])) {
-            $aliasIdentifiers = array_map('trim', explode(',', $imageData['all_alias_identifier']));
-            
-            // Check if any customer number matches the image's alias
-            foreach ($customerData['customer_numbers'] as $customerNumber) {
-                if (in_array($customerNumber, $aliasIdentifiers)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // If no alias identifiers, image is visible to all
-        return true;
-    }
-
-    /**
-     * Get authorized Bynder image URL
-     *
-     * @param array $jsonData
-     * @param string $sku
-     * @param array|null $customerData
-     * @return string|null
-     */
-    private function getAuthorizedImageUrl($jsonData, $sku, $customerData)
-    {
-        if (empty($jsonData) || !is_array($jsonData)) {
-            return null;
-        }
-
-        // First try to get images for specific SKU
-        $imagesToCheck = [];
-        if (isset($jsonData[$sku]) && is_array($jsonData[$sku])) {
-            $imagesToCheck = $jsonData[$sku];
-        } else {
-            // If no SKU-specific images, flatten all images
-            foreach ($jsonData as $skuKey => $images) {
-                if (is_array($images)) {
-                    $imagesToCheck = array_merge($imagesToCheck, $images);
-                }
-            }
-        }
-
-        // Sort images by is_order
-        usort($imagesToCheck, function ($a, $b) {
-            $orderA = isset($a['is_order']) ? (int)$a['is_order'] : 0;
-            $orderB = isset($b['is_order']) ? (int)$b['is_order'] : 0;
-            return $orderA <=> $orderB;
-        });
-
-        // Priority 1: Thumbnail role
-        foreach ($imagesToCheck as $imageData) {
-            if (!$this->isImageAuthorized($imageData, $customerData)) {
-                continue;
-            }
-
-            if (isset($imageData['image_role']) && is_array($imageData['image_role'])) {
-                if (in_array('Thumbnail', $imageData['image_role'])) {
-                    if (isset($imageData['thum_url']) && !empty(trim($imageData['thum_url']))) {
-                        return trim($imageData['thum_url']);
-                    }
-                }
-            }
-        }
-
-        // Priority 2: Base role
-        foreach ($imagesToCheck as $imageData) {
-            if (!$this->isImageAuthorized($imageData, $customerData)) {
-                continue;
-            }
-
-            if (isset($imageData['image_role']) && is_array($imageData['image_role'])) {
-                if (in_array('Base', $imageData['image_role'])) {
-                    if (isset($imageData['thum_url']) && !empty(trim($imageData['thum_url']))) {
-                        return trim($imageData['thum_url']);
-                    }
-                }
-            }
-        }
-
-        // Priority 3: Small role
-        foreach ($imagesToCheck as $imageData) {
-            if (!$this->isImageAuthorized($imageData, $customerData)) {
-                continue;
-            }
-
-            if (isset($imageData['image_role']) && is_array($imageData['image_role'])) {
-                if (in_array('Small', $imageData['image_role'])) {
-                    if (isset($imageData['thum_url']) && !empty(trim($imageData['thum_url']))) {
-                        return trim($imageData['thum_url']);
-                    }
-                }
-            }
-        }
-
-        // Priority 4: Any image
-        foreach ($imagesToCheck as $imageData) {
-            if (!$this->isImageAuthorized($imageData, $customerData)) {
-                continue;
-            }
-
-            if (isset($imageData['item_type']) && $imageData['item_type'] === 'IMAGE') {
-                if (isset($imageData['thum_url']) && !empty(trim($imageData['thum_url']))) {
-                    return trim($imageData['thum_url']);
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Get authorized image alt text
-     *
-     * @param array $jsonData
-     * @param string $sku
-     * @param array|null $customerData
-     * @return string|null
-     */
-    private function getAuthorizedImageAlt($jsonData, $sku, $customerData)
-    {
-        if (empty($jsonData) || !is_array($jsonData)) {
-            return null;
-        }
-
-        // First try to get images for specific SKU
-        $imagesToCheck = [];
-        if (isset($jsonData[$sku]) && is_array($jsonData[$sku])) {
-            $imagesToCheck = $jsonData[$sku];
-        } else {
-            foreach ($jsonData as $skuKey => $images) {
-                if (is_array($images)) {
-                    $imagesToCheck = array_merge($imagesToCheck, $images);
-                }
-            }
-        }
-
-        // Find first authorized image with alt_text
-        foreach ($imagesToCheck as $imageData) {
-            if ($this->isImageAuthorized($imageData, $customerData)) {
-                if (isset($imageData['alt_text']) && !empty(trim($imageData['alt_text']))) {
-                    return trim($imageData['alt_text']);
-                }
-            }
-        }
-
-        return null;
-    }
-
     public function getImages($cartId)
     {
         $itemData = [];
@@ -284,43 +122,135 @@ class ImageProvider extends CoreImageProvider
         return $itemData;
     }
 
-    private function getProductImageData(\Magento\Quote\Model\Quote\Item $cartItem, $customerData = null)
+    private function getImageUrl(array $jsonData, ?string $sku): ?string
+    {
+        if (empty($sku) || !isset($jsonData[$sku])) {
+            return null;
+        }
+
+        $roles = ['Thumbnail', 'Base', 'Small'];
+
+        foreach ($roles as $role) {
+            foreach ($jsonData[$sku] as $image) {
+                if (
+                    isset($image['image_role']) &&
+                    is_array($image['image_role']) &&
+                    in_array($role, $image['image_role']) &&
+                    !empty($image['thum_url'])
+                ) {
+                    return trim($image['thum_url']);
+                }
+            }
+        }
+
+        foreach ($jsonData[$sku] as $image) {
+            if (
+                ($image['item_type'] ?? '') === 'IMAGE' &&
+                !empty($image['thum_url'])
+            ) {
+                return trim($image['thum_url']);
+            }
+        }
+
+        return null;
+    }
+
+    private function getImageAlt(array $jsonData, ?string $sku): ?string
+    {
+        if (empty($sku) || !isset($jsonData[$sku])) {
+            return null;
+        }
+
+        foreach ($jsonData[$sku] as $image) {
+            if (!empty($image['alt_text'])) {
+                return trim($image['alt_text']);
+            }
+        }
+
+        return null;
+    }
+
+    private function getProductImageData(\Magento\Quote\Model\Quote\Item $cartItem)
     {
         $product = $this->itemResolver->getFinalProduct($cartItem);
+
         $imageHelper = $this->imageHelper->init(
             $product,
             'mini_cart_product_thumbnail'
         );
 
+        // Default Magento image
         $imageUrl = $imageHelper->getUrl();
         $imageAlt = $imageHelper->getLabel();
 
-        $productId = $cartItem->getProduct()->getId();
-        $product = $this->productRepository->getById($productId);
+        $product = $this->productRepository->getById($product->getId());
+
         $bynderImage = $product->getData('bynder_multi_img');
-        $productSku = $product->getSku();
 
-        if (!empty($bynderImage)) {
-            $jsonData = json_decode($bynderImage, true);
-            if (!empty($jsonData) && is_array($jsonData)) {
-                // Get authorized image URL
-                $authorizedImageUrl = $this->getAuthorizedImageUrl($jsonData, $productSku, $customerData);
-                if ($authorizedImageUrl) {
-                    $imageUrl = $authorizedImageUrl;
-                }
+        if (empty($bynderImage)) {
+            return [
+                'src'    => $imageUrl,
+                'alt'    => $imageAlt,
+                'width'  => $imageHelper->getWidth(),
+                'height' => $imageHelper->getHeight(),
+            ];
+        }
 
-                // Get authorized image alt text
-                $authorizedImageAlt = $this->getAuthorizedImageAlt($jsonData, $productSku, $customerData);
-                if ($authorizedImageAlt) {
-                    $imageAlt = $authorizedImageAlt;
-                }
+        $jsonData = json_decode($bynderImage, true);
+
+        if (!is_array($jsonData) || empty($jsonData)) {
+            return [
+                'src'    => $imageUrl,
+                'alt'    => $imageAlt,
+                'width'  => $imageHelper->getWidth(),
+                'height' => $imageHelper->getHeight(),
+            ];
+        }
+
+        $originalSku = $product->getSku();
+        $displaySku  = $originalSku;
+
+        $customerData = $this->getCustomerData();
+
+        if (!empty($customerData)) {
+
+            $aliasSku = $this->dataHelper->getAliasSkubyaliasidentifier(
+                $originalSku,
+                $customerData
+            );
+
+            if (!empty($aliasSku)) {
+                $displaySku = $aliasSku;
             }
+        }
+        $customImage = $this->getImageUrl($jsonData, $displaySku);
+        $customAlt   = $this->getImageAlt($jsonData, $displaySku);
+        if (!$customImage && $displaySku !== $originalSku) {
+
+            $customImage = $this->getImageUrl(
+                $jsonData,
+                $originalSku
+            );
+
+            $customAlt = $this->getImageAlt(
+                $jsonData,
+                $originalSku
+            );
+        }
+        if ($customImage) {
+            $imageUrl = $customImage;
+        } else {
+            $imageUrl = self::DEFAULT_IMAGE;
+        }
+
+        if ($customAlt) {
+            $imageAlt = $customAlt;
         }
 
         return [
-            'src' => $imageUrl,
-            'alt' => $imageAlt,
-            'width' => $imageHelper->getWidth(),
+            'src'    => $imageUrl,
+            'alt'    => $imageAlt,
+            'width'  => $imageHelper->getWidth(),
             'height' => $imageHelper->getHeight(),
         ];
     }
