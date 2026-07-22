@@ -11,9 +11,6 @@ use DamConsultants\Ahfproducts\Helper\Data;
 
 class ItemPlugin
 {
-    private const DEFAULT_IMAGE =
-        'https://i0.wp.com/picjumbo.com/wp-content/uploads/silhouettes-of-hawaiian-palms-at-a-gorgeous-sunset-free-image.jpeg?h=800&quality=80';
-
     public function __construct(
         private ProductRepositoryInterface $productRepository,
         private Session $customerSession,
@@ -27,36 +24,37 @@ class ItemPlugin
         Item $subject,
         ?string $result
     ): ?string {
+
         $item = $subject->getItem();
+
         if (!$item) {
             return $result;
         }
+
         try {
             $productSku = $item->getSku();
             $product = $this->productRepository->get($productSku);
-            
 
             if (!$product || !$product->getId()) {
                 return $result;
             }
 
             $json = $product->getData('bynder_multi_img');
-            
+
             if (empty($json)) {
-                return $result ?: self::DEFAULT_IMAGE;
+                return $this->getPlaceholderOrMagento($result);
             }
 
             $images = json_decode($json, true);
 
             if (!is_array($images)) {
-                return $result ?: self::DEFAULT_IMAGE;
+                return $this->getPlaceholderOrMagento($result);
             }
 
             $originalSku = $product->getSku();
             $displaySku = $originalSku;
 
             if ($customerData = $this->getCustomerData()) {
-
                 $aliasSku = $this->dataHelper->getAliasSkubyaliasidentifier(
                     $originalSku,
                     $customerData
@@ -69,7 +67,7 @@ class ItemPlugin
 
             $image = $this->findImage($images, $displaySku);
 
-            if (!$image && $displaySku != $originalSku) {
+            if (!$image && $displaySku !== $originalSku) {
                 $image = $this->findImage($images, $originalSku);
             }
 
@@ -77,11 +75,26 @@ class ItemPlugin
                 return $image;
             }
 
-            return $this->dataHelper->getPlaceHolderImage();;
+            return $this->getPlaceholderOrMagento($result);
 
         } catch (\Exception $e) {
             return $result;
         }
+    }
+
+    /**
+     * Return custom placeholder if configured,
+     * otherwise return Magento's original image/placeholder.
+     */
+    private function getPlaceholderOrMagento(?string $result): ?string
+    {
+        $placeholder = trim((string)$this->dataHelper->getPlaceHolderImage());
+
+        if (!empty($placeholder)) {
+            return $placeholder;
+        }
+
+        return $result;
     }
 
     private function findImage(array $images, string $sku): ?string
@@ -91,12 +104,11 @@ class ItemPlugin
         }
 
         foreach (['Thumbnail', 'Small', 'Base'] as $role) {
-
             foreach ($images[$sku] as $image) {
-
                 if (
                     !empty($image['thum_url']) &&
                     isset($image['image_role']) &&
+                    is_array($image['image_role']) &&
                     in_array($role, $image['image_role'])
                 ) {
                     return trim($image['thum_url']);
@@ -105,7 +117,6 @@ class ItemPlugin
         }
 
         foreach ($images[$sku] as $image) {
-
             if (
                 ($image['item_type'] ?? '') === 'IMAGE' &&
                 !empty($image['thum_url'])
@@ -144,8 +155,7 @@ class ItemPlugin
                     $company->getData('customer_number');
             }
 
-            $data['customer_numbers'] =
-                array_unique($data['customer_numbers']);
+            $data['customer_numbers'] = array_unique($data['customer_numbers']);
 
             return $data;
 

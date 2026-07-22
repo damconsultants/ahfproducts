@@ -9,6 +9,7 @@ use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Company\Api\CompanyManagementInterface;
 use DamConsultants\Ahfproducts\Helper\Data;
+use Magento\Catalog\Helper\Image as ImageHelper;
 
 class GalleryPlugin
 {
@@ -17,6 +18,7 @@ class GalleryPlugin
     protected $customerRepository;
     protected $companyManagement;
     protected $datahelper;
+    private $imageHelper;
 
     public function __construct(
         AuthorizationInterface $authorization,
@@ -24,12 +26,14 @@ class GalleryPlugin
         CustomerRepositoryInterface $customerRepository,
         CompanyManagementInterface $companyManagement,
         Data $DataHelper,
+        ImageHelper $imageHelper
     ) {
         $this->authorization = $authorization;
         $this->customerSession = $customerSession;
         $this->customerRepository = $customerRepository;
         $this->companyManagement = $companyManagement;
         $this->datahelper = $DataHelper;
+        $this->imageHelper = $imageHelper;
     }
 
     /**
@@ -92,90 +96,102 @@ class GalleryPlugin
     {
         $product = $subject->getProduct();
         $useBynderBothImage = $product->getData('use_bynder_both_image');
+
         $imagesItems = [];
-        // Logged in customer/company data
+
         $customerData = $this->getCustomerData();
-        // Base SKU
+
         $displaySku = $product->getSku();
+
         if (!empty($customerData)) {
             $aliasSku = $this->datahelper->getAliasSkubyaliasidentifier(
                 $product->getSku(),
                 $customerData
             );
+
             if (!empty($aliasSku)) {
                 $displaySku = $aliasSku;
             }
         }
+
         if (!$this->authorization->isAllowed('DamConsultants_BynderDemo::manage_product_attribute')) {
+
             $bynderMultiImg = $product->getData('bynder_multi_img');
-            $imageUrl = $this->datahelper->getPlaceHolderImage();
+
             if (!empty($bynderMultiImg)) {
+
                 $bynderImages = json_decode($bynderMultiImg, true);
-                if (is_array($bynderImages) && !empty($bynderImages)) {
+
+                if (is_array($bynderImages)) {
+
                     $mainImageRole = ($useBynderBothImage == 1) ? 'image' : 'Base';
+
                     foreach ($bynderImages as $sku => $imagesData) {
-                        // Only process images of selected SKU
+
                         if ($sku != $displaySku) {
                             continue;
                         }
+
                         if (!is_array($imagesData) || empty($imagesData)) {
                             continue;
                         }
+
                         usort($imagesData, function ($a, $b) {
-                            $orderA = isset($a['is_order']) ? (int)$a['is_order'] : 0;
-                            $orderB = isset($b['is_order']) ? (int)$b['is_order'] : 0;
-                            return $orderA <=> $orderB;
+                            return ((int)($a['is_order'] ?? 0)) <=> ((int)($b['is_order'] ?? 0));
                         });
+
                         foreach ($imagesData as $key => $values) {
-                            if (
-                                !isset($values['item_type']) ||
-                                $values['item_type'] != 'IMAGE'
-                            ) {
+
+                            if (($values['item_type'] ?? '') !== 'IMAGE') {
                                 continue;
                             }
+
                             $imageUrl = trim($values['thum_url'] ?? '');
-                            if (empty($imageUrl)) {
+
+                            if ($imageUrl === '') {
                                 continue;
                             }
+
                             $isMain = false;
-                            if (
-                                isset($values['image_role']) &&
-                                is_array($values['image_role'])
-                            ) {
-                                foreach ($values['image_role'] as $role) {
-                                    if ($role == $mainImageRole) {
-                                        $isMain = true;
-                                        break;
-                                    }
-                                }
+
+                            if (!empty($values['image_role']) && is_array($values['image_role'])) {
+                                $isMain = in_array($mainImageRole, $values['image_role']);
                             }
-                            $imageItem = new DataObject([
+
+                            $imagesItems[] = [
                                 'thumb'     => $imageUrl,
                                 'img'       => $imageUrl,
                                 'full'      => $imageUrl,
                                 'caption'   => $values['alt_text'] ?? $product->getName(),
-                                'position'  => isset($values['is_order']) ? (int)$values['is_order'] : ($key + 1),
+                                'position'  => (int)($values['is_order'] ?? ($key + 1)),
                                 'isMain'    => $isMain,
                                 'type'      => 'image',
                                 'videoUrl'  => null,
                                 'src'       => null,
                                 'sku'       => $sku
-                            ]);
-                            $imagesItems[] = $imageItem->toArray();
+                            ];
                         }
-                        // No need to loop other SKUs
+
                         break;
                     }
                 }
             }
         }
-        if (empty($imagesItems)) {
 
-            // Use default image if Bynder images are not found
+        // If Bynder images exist, use them
+        if (!empty($imagesItems)) {
+            return json_encode($imagesItems);
+        }
+
+        // Custom placeholder
+        $placeholder = trim((string)$this->datahelper->getPlaceHolderImage());
+
+        if (!empty($placeholder)) {
+
             $imagesItems[] = [
-                'thumb'     => $imageUrl,
-                'img'       => $imageUrl,
-                'full'      => $imageUrl,
+                'thumb'     => $placeholder,
+                'img'       => $placeholder,
+                'full'      => $placeholder,
                 'caption'   => $product->getName(),
                 'position'  => 1,
                 'isMain'    => true,
@@ -184,8 +200,21 @@ class GalleryPlugin
                 'src'       => null,
                 'sku'       => $displaySku
             ];
+
+            return json_encode($imagesItems);
         }
 
-        return json_encode($imagesItems);
+        // Otherwise use Magento default gallery/images
+        return $proceed();
+    }
+    private function getPlaceholderImage(): string
+    {
+        $placeholder = $this->datahelper->getPlaceHolderImage();
+
+        if (!empty($placeholder)) {
+            return $placeholder;
+        }
+
+        return $this->imageHelper->getDefaultPlaceholderUrl('image');
     }
 }

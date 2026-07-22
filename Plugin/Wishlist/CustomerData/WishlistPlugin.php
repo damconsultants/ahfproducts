@@ -8,6 +8,7 @@ use Magento\Customer\Model\Session;
 use Magento\Customer\Api\CustomerRepositoryInterface;
 use Magento\Company\Api\CompanyManagementInterface;
 use DamConsultants\Ahfproducts\Helper\Data;
+use Magento\Catalog\Helper\Image as ImageHelper;
 
 class WishlistPlugin
 {
@@ -16,19 +17,22 @@ class WishlistPlugin
     private CustomerRepositoryInterface $customerRepository;
     private CompanyManagementInterface $companyManagement;
     private Data $dataHelper;
+    private ImageHelper $imageHelper;
 
     public function __construct(
         ProductRepositoryInterface $productRepository,
         Session $customerSession,
         CustomerRepositoryInterface $customerRepository,
         CompanyManagementInterface $companyManagement,
-        Data $dataHelper
+        Data $dataHelper,
+        ImageHelper $imageHelper
     ) {
         $this->productRepository = $productRepository;
         $this->customerSession = $customerSession;
         $this->customerRepository = $customerRepository;
         $this->companyManagement = $companyManagement;
         $this->dataHelper = $dataHelper;
+        $this->imageHelper = $imageHelper;
     }
 
     public function afterGetSectionData(
@@ -56,11 +60,7 @@ class WishlistPlugin
                     $product->getData('bynder_multi_img'),
                     $sku
                 );
-                if ($image) {
-                    $item['image']['src'] = $image;
-                } else {
-                    $item['image']['src'] = $this->dataHelper->getPlaceHolderImage();
-                }
+                $item['image']['src'] = $image ?: $this->getPlaceholderImage();
             } catch (\Exception $e) {
             }
         }
@@ -137,5 +137,20 @@ class WishlistPlugin
         } catch (\Exception $e) {
             return null;
         }
+    }
+    /**
+     * Get Placeholder Image
+     *
+     * @return string
+     */
+    private function getPlaceholderImage(): string
+    {
+        $placeholder = $this->dataHelper->getPlaceHolderImage();
+
+        if (!empty($placeholder)) {
+            return $placeholder;
+        }
+
+        return $this->imageHelper->getDefaultPlaceholderUrl('thumbnail');
     }
 }

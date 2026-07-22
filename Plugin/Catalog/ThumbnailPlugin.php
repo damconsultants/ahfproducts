@@ -7,6 +7,7 @@ use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\UrlInterface;
 use DamConsultants\Ahfproducts\Helper\Data;
+use Magento\Catalog\Helper\Image as ImageHelper;
 
 class ThumbnailPlugin
 {
@@ -29,17 +30,23 @@ class ThumbnailPlugin
      * @var Data
      */
     private $dataHelper;
+    /**
+     * @var ImageHelper
+     */
+    private $imageHelper;
 
     public function __construct(
         ProductRepositoryInterface $productRepository,
         UrlInterface $urlBuilder,
         RequestInterface $request,
-        Data $dataHelper
+        Data $dataHelper,
+        ImageHelper $imageHelper
     ) {
         $this->productRepository = $productRepository;
         $this->urlBuilder = $urlBuilder;
         $this->request = $request;
         $this->dataHelper = $dataHelper;
+        $this->imageHelper = $imageHelper;
     }
 
     /**
@@ -106,10 +113,26 @@ class ThumbnailPlugin
 
             if (!$thumbnailFound) {
 
-                $placeholder = $this->dataHelper->getPlaceHolderImage();
-
-                $item[$fieldName . '_src'] = $placeholder;
-                $item[$fieldName . '_orig_src'] = $placeholder;
+                $placeholder = trim((string)$this->dataHelper->getPlaceHolderImage());
+            
+                if (!empty($placeholder)) {
+            
+                    $item[$fieldName . '_src'] = $placeholder;
+                    $item[$fieldName . '_orig_src'] = $placeholder;
+            
+                } else {
+            
+                    // Magento default placeholder
+                    $product = $this->productRepository->getById((int)$item['entity_id']);
+            
+                    $magentoPlaceholder = $this->imageHelper
+                        ->init($product, 'product_listing_thumbnail')
+                        ->getUrl();
+            
+                    $item[$fieldName . '_src'] = $magentoPlaceholder;
+                    $item[$fieldName . '_orig_src'] = $magentoPlaceholder;
+                }
+            
                 $item[$fieldName . '_alt'] = $item['name'] ?? '';
             }
 

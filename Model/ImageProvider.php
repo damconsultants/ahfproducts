@@ -27,7 +27,7 @@ class ImageProvider extends CoreImageProvider
     private $customerRepository;
     private $companyManagement;
     protected $dataHelper;
-    private const DEFAULT_IMAGE = 'https://i0.wp.com/picjumbo.com/wp-content/uploads/silhouettes-of-hawaiian-palms-at-a-gorgeous-sunset-free-image.jpeg?h=800&quality=80';
+
 
 
     public function __construct(
@@ -118,7 +118,7 @@ class ImageProvider extends CoreImageProvider
         foreach ($items as $cartItem) {
             $itemData[$cartItem->getItemId()] = $this->getProductImageData($cartItem, $customerData);
         }
-
+        
         return $itemData;
     }
 
@@ -182,76 +182,74 @@ class ImageProvider extends CoreImageProvider
         // Default Magento image
         $imageUrl = $imageHelper->getUrl();
         $imageAlt = $imageHelper->getLabel();
-
         $product = $this->productRepository->getById($product->getId());
 
         $bynderImage = $product->getData('bynder_multi_img');
-
         if (empty($bynderImage)) {
-            return [
-                'src'    => $imageUrl,
-                'alt'    => $imageAlt,
-                'width'  => $imageHelper->getWidth(),
-                'height' => $imageHelper->getHeight(),
-            ];
+            $imageUrl = $this->getPlaceHolderImage();
+            return $this->buildImageData($imageUrl, $imageAlt, $imageHelper);
         }
-
         $jsonData = json_decode($bynderImage, true);
-
         if (!is_array($jsonData) || empty($jsonData)) {
-            return [
-                'src'    => $imageUrl,
-                'alt'    => $imageAlt,
-                'width'  => $imageHelper->getWidth(),
-                'height' => $imageHelper->getHeight(),
-            ];
+            $imageUrl = $this->getPlaceHolderImage();
+            return $this->buildImageData($imageUrl, $imageAlt, $imageHelper);
         }
-
         $originalSku = $product->getSku();
         $displaySku  = $originalSku;
-
         $customerData = $this->getCustomerData();
-
         if (!empty($customerData)) {
-
             $aliasSku = $this->dataHelper->getAliasSkubyaliasidentifier(
                 $originalSku,
                 $customerData
             );
-
             if (!empty($aliasSku)) {
                 $displaySku = $aliasSku;
             }
         }
         $customImage = $this->getImageUrl($jsonData, $displaySku);
         $customAlt   = $this->getImageAlt($jsonData, $displaySku);
-        if (!$customImage && $displaySku !== $originalSku) {
-
+        if ($customImage != NULL && (strcmp($displaySku,$originalSku) > 0)) {
             $customImage = $this->getImageUrl(
                 $jsonData,
                 $originalSku
             );
-
             $customAlt = $this->getImageAlt(
                 $jsonData,
                 $originalSku
             );
         }
-        if ($customImage) {
+        //var_dump($customImage != NULL); exit;
+        
+        if ($customImage != NULL) {
             $imageUrl = $customImage;
-        } else {
-            $imageUrl = self::DEFAULT_IMAGE;
         }
-
         if ($customAlt) {
             $imageAlt = $customAlt;
         }
+        return $this->buildImageData($imageUrl, $imageAlt, $imageHelper);
+    }
+    /**
+     * Get Placeholder Image
+     *
+     * @return string
+     */
+    private function getPlaceholderImage(): string
+    {
+        $placeholder = $this->dataHelper->getPlaceHolderImage();
 
+        if (!empty($placeholder)) {
+            return $placeholder;
+        }
+
+        return $this->imageHelper->getDefaultPlaceholderUrl('small_image');
+    }
+    private function buildImageData(string $url, string $alt, Image $imageHelper): array
+    {
         return [
-            'src'    => $imageUrl,
-            'alt'    => $imageAlt,
-            'width'  => $imageHelper->getWidth(),
-            'height' => $imageHelper->getHeight(),
+            'src' => $url,
+            'alt' => $alt,
+            'width' => $imageHelper->getWidth(),
+            'height' => $imageHelper->getHeight()
         ];
     }
 }

@@ -39,8 +39,11 @@ class Image
      * @var LoggerInterface
      */
     protected $logger;
+    
+    /**
+     * @var Data
+     */
     protected $dataHelper;
-    private const DEFAULT_IMAGE = 'https://i0.wp.com/picjumbo.com/wp-content/uploads/silhouettes-of-hawaiian-palms-at-a-gorgeous-sunset-free-image.jpeg?h=800&quality=80';
 
     /**
      * Image constructor
@@ -51,6 +54,7 @@ class Image
      * @param CustomerRepositoryInterface $customerRepository
      * @param CompanyManagementInterface $companyManagement
      * @param LoggerInterface $logger
+     * @param Data $dataHelper
      */
     public function __construct(
         \Magento\Framework\Registry $Registry,
@@ -59,7 +63,7 @@ class Image
         CustomerRepositoryInterface $customerRepository,
         CompanyManagementInterface $companyManagement,
         LoggerInterface $logger,
-        Data $dataHelper,
+        Data $dataHelper
     ) {
         $this->_registry = $Registry;
         $this->product = $product;
@@ -123,6 +127,13 @@ class Image
         }
     }
 
+    /**
+     * Get image URL from Bynder data
+     *
+     * @param array $jsonData
+     * @param string $sku
+     * @return string|null
+     */
     private function getImageUrl(array $jsonData, string $sku): ?string
     {
         if (!isset($jsonData[$sku]) || !is_array($jsonData[$sku])) {
@@ -137,7 +148,6 @@ class Image
 
         foreach ($roles as $role) {
             foreach ($jsonData[$sku] as $image) {
-
                 if (
                     !empty($image['image_role']) &&
                     in_array($role, $image['image_role']) &&
@@ -149,7 +159,6 @@ class Image
         }
 
         foreach ($jsonData[$sku] as $image) {
-
             if (
                 ($image['item_type'] ?? '') == 'IMAGE' &&
                 !empty($image['thum_url'])
@@ -159,6 +168,77 @@ class Image
         }
 
         return null;
+    }
+
+    /**
+     * Get placeholder image URL
+     *
+     * @return string|null
+     */
+    private function getPlaceholderImage()
+    {
+        try {
+            $placeholder = trim((string)$this->dataHelper->getPlaceHolderImage());
+            
+            // Log the placeholder value for debugging
+            $this->logger->info('Placeholder value from helper: ' . $placeholder);
+            
+            if (!empty($placeholder)) {
+                return $placeholder;
+            }
+            
+            // If helper returns empty, try to get Magento default placeholder
+            $defaultPlaceholder = $this->getMagentoDefaultPlaceholder();
+            if ($defaultPlaceholder) {
+                $this->logger->info('Using Magento default placeholder: ' . $defaultPlaceholder);
+                return $defaultPlaceholder;
+            }
+            
+            return null;
+        } catch (\Exception $e) {
+            $this->logger->error('Error getting placeholder: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get Magento default placeholder image
+     *
+     * @return string|null
+     */
+    private function getMagentoDefaultPlaceholder()
+    {
+        try {
+            // Get the default product placeholder image
+            $objectManager = \Magento\Framework\App\ObjectManager::getInstance();
+            $storeManager = $objectManager->get(\Magento\Store\Model\StoreManagerInterface::class);
+            $imageHelper = $objectManager->get(\Magento\Catalog\Helper\Image::class);
+            
+            $baseUrl = $storeManager->getStore()->getBaseUrl(
+                \Magento\Framework\UrlInterface::URL_TYPE_MEDIA
+            );
+            
+            // Default Magento placeholder path
+            $placeholderPath = 'catalog/product/placeholder/image.jpg';
+            
+            // Check if custom placeholder exists
+            $mediaDirectory = $objectManager->get(
+                \Magento\Framework\Filesystem::class
+            )->getDirectoryRead(
+                \Magento\Framework\App\Filesystem\DirectoryList::MEDIA
+            );
+            
+            $fullPath = $mediaDirectory->getAbsolutePath($placeholderPath);
+            if (file_exists($fullPath)) {
+                return $baseUrl . $placeholderPath;
+            }
+            
+            // Fallback to a default image
+            return $baseUrl . 'catalog/product/placeholder/thumbnail.jpg';
+        } catch (\Exception $e) {
+            $this->logger->error('Error getting Magento default placeholder: ' . $e->getMessage());
+            return null;
+        }
     }
 
     /**
@@ -175,6 +255,9 @@ class Image
         \Magento\Quote\Model\Quote\Item $item
     ) {
         $data = $proceed($item);
+        
+        // Log original image for debugging
+        $this->logger->info('Original image data: ' . print_r($data['product_image'] ?? [], true));
         
         try {
             $product = $item->getProduct();
@@ -196,11 +279,13 @@ class Image
             $fullProduct = $this->product->load($productId);
             $bynderImage = $fullProduct->getData('bynder_multi_img');
             
-            $this->logger->info('Bynder image data length: ' . strlen($bynderImage));
+            $this->logger->info('Bynder image data length: ' . strlen($bynderImage ?? ''));
             
             // Get customer data for authorization
             $customerData = $this->getCustomerData();
             $this->logger->info('Customer data: ' . print_r($customerData, true));
+            
+            $imageSet = false;
             
             if (!empty($bynderImage)) {
                 $jsonValue = json_decode($bynderImage, true);
@@ -215,11 +300,11 @@ class Image
                     );
                     
                     if ($imageUrl) {
+                        // Use the Bynder image
                         $data['product_image']['src'] = $imageUrl;
+                        $data['product_image']['is_placeholder'] = false;
+                        $imageSet = true;
                         $this->logger->info('Updated image URL: ' . $imageUrl);
-                    } else {
-                        $data['product_image']['src'] = $this->dataHelper->getPlaceHolderImage();;
-                        $this->logger->info('No authorized image found, keeping default');
                     }
                 } else {
                     $this->logger->info('JSON decode failed or empty');
@@ -227,6 +312,25 @@ class Image
             } else {
                 $this->logger->info('No Bynder image data found for product');
             }
+            
+            // If no Bynder image was set, try to set placeholder
+            if (!$imageSet) {
+                $placeholder = $this->getPlaceholderImage();
+                
+                if (!empty($placeholder)) {
+                    $data['product_image']['src'] = $placeholder;
+                    $data['product_image']['is_placeholder'] = true;
+                    $this->logger->info('Using placeholder image: ' . $placeholder);
+                } else {
+                    $this->logger->info('No placeholder available, keeping original image');
+                    // Keep the original Magento default image
+                    // $data['product_image']['src'] already contains the default
+                }
+            }
+            
+            // Log final image for debugging
+            $this->logger->info('Final image data: ' . print_r($data['product_image'] ?? [], true));
+            
         } catch (\Exception $e) {
             $this->logger->error('Error in aroundGetItemData: ' . $e->getMessage());
             $this->logger->error('Stack trace: ' . $e->getTraceAsString());

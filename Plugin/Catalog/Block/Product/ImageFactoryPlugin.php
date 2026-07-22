@@ -39,6 +39,7 @@ class ImageFactoryPlugin
      */
     private $companyManagement;
     protected $datahelper;
+    private ImageHelper $imageHelper;
 
     /**
      * Constructor
@@ -48,6 +49,7 @@ class ImageFactoryPlugin
      * @param CustomerSession $customerSession
      * @param CustomerRepositoryInterface $customerRepository
      * @param CompanyManagementInterface $companyManagement
+     * @param ImageHelper $imageHelper
      */
     public function __construct(
         \Magento\Catalog\Api\ProductRepositoryInterface $productRepository,
@@ -55,7 +57,8 @@ class ImageFactoryPlugin
         CustomerSession $customerSession,
         CustomerRepositoryInterface $customerRepository,
         CompanyManagementInterface $companyManagement,
-        Data $dataHelper
+        Data $dataHelper,
+        ImageHelper $imageHelper
     ) {
         $this->productRepository = $productRepository;
         $this->assetRepository = $assetRepository;
@@ -63,6 +66,7 @@ class ImageFactoryPlugin
         $this->customerRepository = $customerRepository;
         $this->companyManagement = $companyManagement;
         $this->datahelper = $dataHelper;
+        $this->imageHelper = $imageHelper;
     }
 
     /**
@@ -184,21 +188,42 @@ class ImageFactoryPlugin
         string $imageId,
         ?array $attributes = null
     ) {
-        $attributes = $attributes ?? [];
+        if ($imageId == 'cart_page_product_thumbnail') {
+            $products = $this->productRepository->getById($product->getId());
+            $useBynderCdn = (bool)$products->getData('use_bynder_cdn');
+            $bynderImages = $products->getData('bynder_multi_img');
+            $productSku = $products->getSku();
+            $imageUrl = null;
+            if ($useBynderCdn && !empty($bynderImages)) {
+                $imageData = json_decode($bynderImages, true);
+                $customerData = $this->getCustomerData();
+                if (!empty($customerData)) {
+                    $aliasSku = $this->datahelper->getAliasSkubyaliasidentifier(
+                        $productSku,
+                        $customerData
+                    );
+        
+                    if (!empty($aliasSku)) {
+                        $productSku = $aliasSku;
+                    }
+                }
+                if (is_array($imageData)) {
     
-        // Use the loaded product instead of reloading from repository
+                    $imageUrl = $this->findImageByRole($imageData, $productSku, 'Small');
+        
+                }
+            }
+            $attributes['src'] = $imageUrl ?: $this->getPlaceholderImage();
+            return $proceed($product, $imageId, $attributes);
+        }
+        $attributes = $attributes ?? [];
         $useBynderCdn = (bool)$product->getData('use_bynder_cdn');
         $bynderImages = $product->getData('bynder_multi_img');
     
         $imageUrl = null;
-    
         if ($useBynderCdn && !empty($bynderImages)) {
-    
             $imageData = json_decode($bynderImages, true);
-    
             $productSku = $product->getSku();
-    
-            // Get customer data
             $customerData = $this->getCustomerData();
     
             if (!empty($customerData)) {
@@ -229,14 +254,23 @@ class ImageFactoryPlugin
                 }
             }
         }
-    
-        // ALWAYS set image
-        if (!empty($imageUrl)) {
-            $attributes['src'] = $imageUrl;
-        } else {
-            $attributes['src'] = $this->datahelper->getPlaceHolderImage();
-        }
-    
+
+        $attributes['src'] = $imageUrl ?: $this->getPlaceholderImage();
         return $proceed($product, $imageId, $attributes);
+    }
+    /**
+     * Get Placeholder Image
+     *
+     * @return string
+     */
+    private function getPlaceholderImage(): string
+    {
+        $placeholder = $this->datahelper->getPlaceHolderImage();
+
+        if (!empty($placeholder)) {
+            return $placeholder;
+        }
+
+        return $this->imageHelper->getDefaultPlaceholderUrl('small_image');
     }
 }

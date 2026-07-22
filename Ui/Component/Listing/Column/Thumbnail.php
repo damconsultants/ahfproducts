@@ -138,11 +138,20 @@ class Thumbnail extends \Magento\Ui\Component\Listing\Columns\Column
 
                 $product = new \Magento\Framework\DataObject($item);
             
-                $placeholder = $this->dataHelper->getPlaceHolderImage();
+                $placeholder = trim((string)$this->dataHelper->getPlaceHolderImage());
+            
+                if (empty($placeholder)) {
+                    $imageHelper = $this->imageHelper->init(
+                        $product,
+                        'product_listing_thumbnail'
+                    );
+            
+                    $placeholder = $imageHelper->getUrl();
+                }
             
                 $item[$fieldName . '_src'] = $placeholder;
                 $item[$fieldName . '_orig_src'] = $placeholder;
-                $item[$fieldName . '_alt'] = $this->getAlt($item);
+                $item[$fieldName . '_alt'] = $this->getAlt($item) ?: '';
             
                 $item[$fieldName . '_link'] = $this->urlBuilder->getUrl(
                     'catalog/product/edit',

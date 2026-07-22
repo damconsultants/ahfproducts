@@ -1,7 +1,10 @@
 <?php
+
 namespace DamConsultants\Ahfproducts\Plugin\Catalog\Ui\DataProvider\Product\Form\Modifier;
 
 use Magento\Catalog\Api\ProductRepositoryInterface;
+use Magento\Catalog\Helper\Image as ImageHelper;
+use Magento\Framework\DataObject;
 use DamConsultants\Ahfproducts\Helper\Data;
 
 class RelatedPlugin
@@ -16,12 +19,19 @@ class RelatedPlugin
      */
     private $dataHelper;
 
+    /**
+     * @var ImageHelper
+     */
+    private $imageHelper;
+
     public function __construct(
         ProductRepositoryInterface $productRepository,
-        Data $dataHelper
+        Data $dataHelper,
+        ImageHelper $imageHelper
     ) {
         $this->productRepository = $productRepository;
         $this->dataHelper = $dataHelper;
+        $this->imageHelper = $imageHelper;
     }
 
     /**
@@ -35,33 +45,55 @@ class RelatedPlugin
     {
         foreach ($result as &$productData) {
 
-            foreach (['links'] as $key) {
+            if (empty($productData['links'])) {
+                continue;
+            }
 
-                if (!isset($productData[$key])) {
+            foreach (['related', 'upsell', 'crosssell'] as $type) {
+
+                if (empty($productData['links'][$type])) {
                     continue;
                 }
 
-                foreach (['related', 'upsell', 'crosssell'] as $type) {
+                foreach ($productData['links'][$type] as &$item) {
 
-                    if (empty($productData[$key][$type])) {
-                        continue;
-                    }
+                    try {
+                        $product = $this->productRepository->getById((int)$item['id']);
 
-                    foreach ($productData[$key][$type] as &$item) {
+                        $image = $this->getThumbnail($product);
 
-                        try {
-                            $product = $this->productRepository->getById($item['id']);
+                        if (!$image) {
 
-                            $image = $this->getThumbnail($product);
+                            $placeholder = trim((string)$this->dataHelper->getPlaceHolderImage());
 
-                            if (!$image) {
-                                $image = $this->dataHelper->getPlaceHolderImage();
+                            if (!empty($placeholder)) {
+                                $image = $placeholder;
+                            } else {
+                                // Magento default placeholder
+                                $image = $this->imageHelper
+                                    ->init($product, 'product_listing_thumbnail')
+                                    ->getUrl();
                             }
+                        }
 
-                            $item['thumbnail'] = $image;
+                        $item['thumbnail'] = $image;
 
-                        } catch (\Exception $e) {
-                            $item['thumbnail'] = $this->dataHelper->getPlaceHolderImage();
+                    } catch (\Exception $e) {
+
+                        $placeholder = trim((string)$this->dataHelper->getPlaceHolderImage());
+
+                        if (!empty($placeholder)) {
+                            $item['thumbnail'] = $placeholder;
+                        } else {
+                            try {
+                                $dummyProduct = new DataObject($item);
+
+                                $item['thumbnail'] = $this->imageHelper
+                                    ->init($dummyProduct, 'product_listing_thumbnail')
+                                    ->getUrl();
+                            } catch (\Exception $e) {
+                                // Keep existing thumbnail
+                            }
                         }
                     }
                 }
@@ -72,16 +104,16 @@ class RelatedPlugin
     }
 
     /**
-     * Get Bynder thumbnail
+     * Get Bynder Thumbnail
      *
      * @param \Magento\Catalog\Api\Data\ProductInterface $product
      * @return string|null
      */
-    private function getThumbnail($product)
+    private function getThumbnail($product): ?string
     {
         $json = $product->getData('bynder_multi_img');
 
-        if (!$json) {
+        if (empty($json)) {
             return null;
         }
 
@@ -100,12 +132,12 @@ class RelatedPlugin
             foreach ($skuImages as $image) {
 
                 if (
+                    !empty($image['thum_url']) &&
                     isset($image['image_role']) &&
                     is_array($image['image_role']) &&
-                    in_array('Thumbnail', $image['image_role']) &&
-                    !empty($image['thum_url'])
+                    in_array('Thumbnail', $image['image_role'])
                 ) {
-                    return $image['thum_url'];
+                    return trim($image['thum_url']);
                 }
             }
         }
