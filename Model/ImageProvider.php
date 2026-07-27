@@ -98,7 +98,6 @@ class ImageProvider extends CoreImageProvider
                 }
             }
 
-            // Remove duplicates
             $customerData['customer_numbers'] = array_unique($customerData['customer_numbers']);
             
             return $customerData;
@@ -186,13 +185,13 @@ class ImageProvider extends CoreImageProvider
 
         $bynderImage = $product->getData('bynder_multi_img');
         if (empty($bynderImage)) {
-            $imageUrl = $this->getPlaceHolderImage();
-            return $this->buildImageData($imageUrl, $imageAlt, $imageHelper);
+            $image_url_place = $this->getPlaceHolderImage();
+            return $this->buildImageData($image_url_place, $imageAlt, $imageHelper);
         }
         $jsonData = json_decode($bynderImage, true);
         if (!is_array($jsonData) || empty($jsonData)) {
-            $imageUrl = $this->getPlaceHolderImage();
-            return $this->buildImageData($imageUrl, $imageAlt, $imageHelper);
+            $image_url_place = $this->getPlaceHolderImage();
+            return $this->buildImageData($image_url_place, $imageAlt, $imageHelper);
         }
         $originalSku = $product->getSku();
         $displaySku  = $originalSku;
@@ -218,15 +217,19 @@ class ImageProvider extends CoreImageProvider
                 $originalSku
             );
         }
-        //var_dump($customImage != NULL); exit;
-        
-        if ($customImage != NULL) {
-            $imageUrl = $customImage;
+        if (empty($customImage)) {
+            $customImage = $this->getPlaceholderImage();
         }
-        if ($customAlt) {
+
+        if (!empty($customAlt)) {
             $imageAlt = $customAlt;
         }
-        return $this->buildImageData($imageUrl, $imageAlt, $imageHelper);
+
+        return $this->buildImageData(
+            $customImage,
+            $imageAlt,
+            $imageHelper
+        );
     }
     /**
      * Get Placeholder Image

@@ -19,6 +19,7 @@ class GalleryPlugin
     protected $companyManagement;
     protected $datahelper;
     private $imageHelper;
+    private $httpContext;
 
     public function __construct(
         AuthorizationInterface $authorization,
@@ -26,7 +27,8 @@ class GalleryPlugin
         CustomerRepositoryInterface $customerRepository,
         CompanyManagementInterface $companyManagement,
         Data $DataHelper,
-        ImageHelper $imageHelper
+        ImageHelper $imageHelper,
+        ?\Magento\Framework\App\Http\Context $httpContext = null
     ) {
         $this->authorization = $authorization;
         $this->customerSession = $customerSession;
@@ -34,6 +36,7 @@ class GalleryPlugin
         $this->companyManagement = $companyManagement;
         $this->datahelper = $DataHelper;
         $this->imageHelper = $imageHelper;
+        $this->httpContext = $httpContext ?: \Magento\Framework\App\ObjectManager::getInstance()->get(\Magento\Framework\App\Http\Context::class);
     }
 
     /**
@@ -43,11 +46,21 @@ class GalleryPlugin
      */
     private function getCustomerData()
     {
+        // First try to read from HTTP Context which is preserved by FPC on category pages
+        $contextNumbers = $this->httpContext->getValue('ahf_customer_numbers');
+        if ($contextNumbers) {
+            return [
+                'customer_numbers' => explode(',', (string)$contextNumbers)
+            ];
+        }
+
         if (!$this->customerSession->isLoggedIn()) {
             return null;
         }
+
         try {
             $customerId = $this->customerSession->getCustomerId();
+                
             $customer = $this->customerRepository->getById($customerId);
             
             $customerData = [
@@ -55,6 +68,7 @@ class GalleryPlugin
                 'customer_email' => $customer->getEmail(),
                 'customer_numbers' => []
             ];
+
             // Get customer's customer number (if exists as attribute)
             $customerNumber = $customer->getCustomAttribute('customer_number') 
                 ? $customer->getCustomAttribute('customer_number')->getValue() 
@@ -63,8 +77,10 @@ class GalleryPlugin
             if ($customerNumber) {
                 $customerData['customer_numbers'][] = $customerNumber;
             }
+
             // Get customer's company
-            $company = $this->companyManagement->getByCustomerId($customerId);           
+            $company = $this->companyManagement->getByCustomerId($customerId);
+            
             if ($company) {
                 $customerData['company_id'] = $company->getId();
                 

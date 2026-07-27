@@ -103,7 +103,7 @@ class WishlistPlugin
 
     private function getCustomerData()
     {
-        if (!$this->customerSession->isLoggedIn()) {
+        if (!$this->customerSession->isLoggedIn()) {    
             return null;
         }
         try {
@@ -151,6 +151,6 @@ class WishlistPlugin
             return $placeholder;
         }
 
-        return $this->imageHelper->getDefaultPlaceholderUrl('thumbnail');
+        return $this->imageHelper->getDefaultPlaceholderUrl('small_image');
     }
 }

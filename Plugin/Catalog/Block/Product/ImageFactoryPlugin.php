@@ -40,6 +40,7 @@ class ImageFactoryPlugin
     private $companyManagement;
     protected $datahelper;
     private ImageHelper $imageHelper;
+    private $httpContext;
 
     /**
      * Constructor
@@ -58,7 +59,8 @@ class ImageFactoryPlugin
         CustomerRepositoryInterface $customerRepository,
         CompanyManagementInterface $companyManagement,
         Data $dataHelper,
-        ImageHelper $imageHelper
+        ImageHelper $imageHelper,
+        ?\Magento\Framework\App\Http\Context $httpContext = null
     ) {
         $this->productRepository = $productRepository;
         $this->assetRepository = $assetRepository;
@@ -67,6 +69,7 @@ class ImageFactoryPlugin
         $this->companyManagement = $companyManagement;
         $this->datahelper = $dataHelper;
         $this->imageHelper = $imageHelper;
+        $this->httpContext = $httpContext ?: \Magento\Framework\App\ObjectManager::getInstance()->get(\Magento\Framework\App\Http\Context::class);
     }
 
     /**
@@ -76,12 +79,21 @@ class ImageFactoryPlugin
      */
     private function getCustomerData()
     {
+        // First try to read from HTTP Context which is preserved by FPC on category pages
+        $contextNumbers = $this->httpContext->getValue('ahf_customer_numbers');
+        if ($contextNumbers) {
+            return [
+                'customer_numbers' => explode(',', (string)$contextNumbers)
+            ];
+        }
+
         if (!$this->customerSession->isLoggedIn()) {
             return null;
         }
 
         try {
             $customerId = $this->customerSession->getCustomerId();
+                
             $customer = $this->customerRepository->getById($customerId);
             
             $customerData = [
@@ -169,6 +181,7 @@ class ImageFactoryPlugin
         }
         return null;
     }
+    
 
     /**
      * Plugin for ImageFactory::create()
@@ -188,7 +201,7 @@ class ImageFactoryPlugin
         string $imageId,
         ?array $attributes = null
     ) {
-        if ($imageId == 'cart_page_product_thumbnail') {
+        if ($imageId !== 'category_page_grid') {
             $products = $this->productRepository->getById($product->getId());
             $useBynderCdn = (bool)$products->getData('use_bynder_cdn');
             $bynderImages = $products->getData('bynder_multi_img');
@@ -197,6 +210,7 @@ class ImageFactoryPlugin
             if ($useBynderCdn && !empty($bynderImages)) {
                 $imageData = json_decode($bynderImages, true);
                 $customerData = $this->getCustomerData();
+                
                 if (!empty($customerData)) {
                     $aliasSku = $this->datahelper->getAliasSkubyaliasidentifier(
                         $productSku,
@@ -225,7 +239,6 @@ class ImageFactoryPlugin
             $imageData = json_decode($bynderImages, true);
             $productSku = $product->getSku();
             $customerData = $this->getCustomerData();
-    
             if (!empty($customerData)) {
                 $aliasSku = $this->datahelper->getAliasSkubyaliasidentifier(
                     $productSku,
