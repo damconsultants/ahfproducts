@@ -207,7 +207,7 @@ class ImageProvider extends CoreImageProvider
         }
         $customImage = $this->getImageUrl($jsonData, $displaySku);
         $customAlt   = $this->getImageAlt($jsonData, $displaySku);
-        if ($customImage != NULL && (strcmp($displaySku,$originalSku) > 0)) {
+        if ($customImage === NULL && (strcmp($displaySku,$originalSku) > 0)) {
             $customImage = $this->getImageUrl(
                 $jsonData,
                 $originalSku
