@@ -235,6 +235,7 @@ class AutoAddFromMagento
                                             $alias_sku_value,
                                             $all_alias_identifier_value
                                         );
+                                        $this->datahelper->updateIsSync($current_sku, 1); 
                                     } catch (Exception $e) {
                                         $insert_data = [
                                             'sku' => $sku,
@@ -243,6 +244,7 @@ class AutoAddFromMagento
                                             'media_id' => "",
                                             "data_type" => ""
                                         ];
+                                        $this->datahelper->updateIsSync($current_sku, 1);
                                         $this->getInsertDataTable($insert_data);
                                     }
                                 } else {
@@ -253,6 +255,7 @@ class AutoAddFromMagento
                                         'media_id' => "",
                                         "data_type" => ""
                                     ];
+                                    $this->datahelper->updateIsSync($current_sku, 1);
                                     $this->getInsertDataTable($insert_data);
                                 }
                             } else {
@@ -294,6 +297,7 @@ class AutoAddFromMagento
                                             $sku,
                                             $all_alias_identifier_value
                                         );
+                                        $this->datahelper->updateIsSync($current_sku, 1);
                                     } catch (Exception $e) {
                                         $insert_data = [
                                             'sku' => $sku,
@@ -302,6 +306,7 @@ class AutoAddFromMagento
                                             'media_id' => "",
                                             "data_type" => ""
                                         ];
+                                        $this->datahelper->updateIsSync($current_sku, 1);
                                         $this->getInsertDataTable($insert_data);
                                     }
                                 } else {
@@ -312,6 +317,7 @@ class AutoAddFromMagento
                                         'media_id' => "",
                                         "data_type" => ""
                                     ];
+                                    $this->datahelper->updateIsSync($current_sku, 1);
                                     $this->getInsertDataTable($insert_data);
                                 }
                             } else {

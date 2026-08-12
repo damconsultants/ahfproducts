@@ -10,7 +10,7 @@ use DamConsultants\Ahfproducts\Model\ResourceModel\MagentoSku;
 use Magento\Framework\App\ResourceConnection;
 use Exception;
 
-class UpdateAllSku
+class UpdateNewAliasSku
 {
     /**
      * @var \Magento\Framework\View\Result\PageFactory
@@ -111,15 +111,14 @@ class UpdateAllSku
      */
     public function execute()
     {
-        $enable = $this->datahelper->getUpdateSkuCronEnable();
+        $enable = $this->datahelper->getUpdateAliasSkuCronEnable();
         if (!$enable) {
             return false;
         }
         $result = $this->resultJsonFactory->create();
-        $skucollection = $this->magentoSkuCollectionFactory->create();
-        $skucollection->addFieldToFilter('status', 'pending')->setPageSize(100);
+        $skucollection = $this->datahelper->getPendingSyncSkus();
         
-        if ($skucollection->getSize() === 0) {
+        if (empty($skucollection)) {
             return $result->setData(['status' => 0, 'message' => 'No pending SKUs to process.']);
         }
         
@@ -130,10 +129,10 @@ class UpdateAllSku
         $collection_slug_val = $meta_properties['collection_data_slug_val'];
         
         foreach ($skucollection as $skuData) {
-            $sku = $skuData['sku'];
+            $sku = $skuData;
             if ($sku != "") {
-                $select_attribute = $skuData['select_attribute'];
-                $select_store = $skuData['select_store'];
+                $select_attribute = "all_attribute";
+                $select_store = null;
                 
                 try {
                     $product_id = $this->product->getIdBySku($sku);
@@ -165,7 +164,6 @@ class UpdateAllSku
                             "lable" => "0"
                         ];
                         $this->getInsertDataTable($insert_data);
-                        $this->magentoSku->delete($skuData);
                         continue;
                     }
                 } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
@@ -178,7 +176,6 @@ class UpdateAllSku
                         "lable" => "0"
                     ];
                     $this->getInsertDataTable($insert_data);
-                    $this->magentoSku->delete($skuData);
                     continue;
                 }
                 
@@ -241,7 +238,7 @@ class UpdateAllSku
             'status' => 1,
             'message' => 'Data Sync Successfully.Please check Bynder Synchronization Log.!'
         ]);
-        
+        /* $this->datahelper->updateIsSync($skucollection, 1); */
         return $result_data;
     }
 
@@ -288,7 +285,6 @@ class UpdateAllSku
                                 $all_alias_identifier
                             );
                             $this->datahelper->updateIsSync($sku, 1);
-                            $this->magentoSku->delete($skuData);
                         } catch (Exception $e) {
                             $insert_data = [
                                 "sku" => $sku,
@@ -300,7 +296,6 @@ class UpdateAllSku
                             ];
                             $this->getInsertDataTable($insert_data);
                             $this->datahelper->updateIsSync($sku, 1);
-                            $this->magentoSku->delete($skuData);
                         }
                     } else {
                         $insert_data = [
@@ -313,7 +308,6 @@ class UpdateAllSku
                         ];
                         $this->getInsertDataTable($insert_data);
                         $this->datahelper->updateIsSync($sku, 1);
-                        $this->magentoSku->delete($skuData);
                     }
                 } else {
                     $insert_data = [
@@ -326,8 +320,6 @@ class UpdateAllSku
                         "lable" => "0"
                     ];
                     $this->getInsertDataTable($insert_data);
-                    $this->datahelper->updateIsSync($sku, 1);
-                    $this->magentoSku->delete($skuData);
                 }
             } else {
                 $insert_data = [
@@ -339,7 +331,6 @@ class UpdateAllSku
                     "lable" => "0"
                 ];
                 $this->getInsertDataTable($insert_data);
-                $this->magentoSku->delete($skuData);
             }
         } catch (Exception $e) {
             $insert_data = [
@@ -351,7 +342,6 @@ class UpdateAllSku
                 "lable" => "0"
             ];
             $this->getInsertDataTable($insert_data);
-            $this->magentoSku->delete($skuData);
         }
     }
 

@@ -10,11 +10,14 @@
 		<job instance="DamConsultants\Ahfproducts\Cron\DeleteValue" method="execute" name="damConsultants_bynder_delete_cron">
 			<config_path>crontab/default/jobs/damConsultants_bynder_delete_cron/schedule/cron_expr</config_path>
 		</job>
-		<job instance="DamConsultants\Ahfproducts\Cron\ScriptRunOneTimeForAddMediaIdinTable" method="execute" name="damConsultants_bynder_ScriptRunOneTimeForAddMediaIdinTable">
+		<!-- <job instance="DamConsultants\Ahfproducts\Cron\ScriptRunOneTimeForAddMediaIdinTable" method="execute" name="damConsultants_bynder_ScriptRunOneTimeForAddMediaIdinTable">
 			<schedule>*/10 * * * *</schedule>
-		</job>
+		</job> -->
 		<job instance="DamConsultants\Ahfproducts\Cron\UpdateAllSku" method="execute" name="damConsultants_bynder_update_sku_all">
-			<schedule>*/7 * * * *</schedule>
+			<config_path>crontab/default/jobs/damConsultants_bynder_update_sku_all/schedule/cron_expr</config_path>
 		</job>
+		<job instance="DamConsultants\Ahfproducts\Cron\UpdateNewAliasSku" method="execute" name="damConsultants_bynder_update_new_alias_sku">
+			<config_path>crontab/default/jobs/damConsultants_bynder_update_new_alias_sku/schedule/cron_expr</config_path>
+		</job>	
 	</group> 
 </config>

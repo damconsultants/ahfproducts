@@ -151,75 +151,7 @@ class Psku extends \Magento\Backend\App\Action
         if (strlen($product_sku) > 0) {
             $productSku = explode(",", trim($product_sku));
             if (count($productSku) > 0) {
-                foreach ($productSku as $sku) {
-                    if ($sku != "") {
-                        try {
-                            $product_id = $this->product->getIdBySku($sku);
-                            $_product = $this->_productRepository->get($sku);
-                            $bynder_multi_img = $_product->getBynderMultiImg();
-                            $bynder_doc = $_product->getBynderDocument();
-                            $storeId = $this->storeManagerInterface->getStore()->getId();
-                            if (!empty($bynder_multi_img)) {
-                                $this->productAction->updateAttributes(
-                                    [$product_id],
-                                    ['bynder_multi_img' => null],
-                                    $storeId
-                                );
-                            }
-                            if (!empty($bynder_doc)) {
-                                $this->productAction->updateAttributes(
-                                    [$product_id],
-                                    ['bynder_document' => null],
-                                    $storeId
-                                );
-                            }
-                            if (!$product_id) {
-                                $insert_data = [
-                                    "sku" => $sku,
-                                    "alias_sku" => "",
-                                    "message" => "SKU not found in products",
-                                    "data_type" => "",
-                                    "lable" => "0"
-                                ];
-                                $this->getInsertDataTable($insert_data);
-                                continue;
-                            }
-                        } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
-                            $insert_data = [
-                                "sku" => $sku,
-                                "alias_sku" => "",
-                                "message" => "SKU not match in products",
-                                "data_type" => "",
-                                "lable" => "0"
-                            ];
-                            $this->getInsertDataTable($insert_data);
-                            continue;
-                        }
-                        
-                        $aliasSku = $this->datahelper->getSkuByAlias($sku);
-                        
-                        $is_sku_made_alias = 0;
-                        if ($aliasSku === null || empty($aliasSku)) {
-                            $aliasSku = $sku;
-                            $is_sku_made_alias = 1;
-                            $this->getApiData($aliasSku , null, $property_id, $collection_value, $select_attribute, $collection_slug_val ,$sku);
-                        } else {
-                            foreach($aliasSku as $a_sku) {
-                                if($a_sku['alias_sku'] == null || empty($a_sku['alias_sku'])) {
-                                    $is_sku_made_alias = 1;
-                                    $this->getApiData($sku, $a_sku['all_alias_identifier'], $property_id, $collection_value, $select_attribute, $collection_slug_val ,$sku);
-                                } else {
-                                    $this->getApiData($a_sku['alias_sku'], $a_sku['all_alias_identifier'], $property_id, $collection_value, $select_attribute, $collection_slug_val ,$sku);
-                                }
-                            }
-                        }
-                        if($is_sku_made_alias == 0){
-                            $all_alias_identifier = array();
-                            $this->getApiData($sku, $all_alias_identifier, $property_id, $collection_value, $select_attribute, $collection_slug_val ,$sku);
-                        }
-                        
-                    }
-                }
+                $this->processSkus($productSku, $select_attribute);
             }
             $result_data = $result->setData([
                 'status' => 1,
@@ -229,6 +161,96 @@ class Psku extends \Magento\Backend\App\Action
         } else {
             $result_data = $result->setData(['status' => 0, 'message' => 'Please enter atleast one SKU.']);
             return $result_data;
+        }
+    }
+
+    /**
+     * Process a list of SKUs using the Psku sync logic.
+     *
+     * @param array $productSkus
+     * @param string $selectAttribute
+     * @return void
+     */
+    public function processSkus(array $productSkus, string $selectAttribute = 'all_attribute')
+    {
+        $property_id = null;
+        $collection = $this->metaPropertyCollectionFactory->create()->getData();
+        $meta_properties = $this->getMetaPropertiesCollection($collection);
+
+        $collection_value = $meta_properties['collection_data_value'];
+        $collection_slug_val = $meta_properties['collection_data_slug_val'];
+
+        foreach ($productSkus as $sku) {
+            $sku = trim($sku);
+            if ($sku === '') {
+                continue;
+            }
+            try {
+                $product_id = $this->product->getIdBySku($sku);
+                $_product = $this->_productRepository->get($sku);
+                $bynder_multi_img = $_product->getBynderMultiImg();
+                $bynder_doc = $_product->getBynderDocument();
+                $storeId = $this->storeManagerInterface->getStore()->getId();
+                if (!empty($bynder_multi_img)) {
+                    $this->productAction->updateAttributes(
+                        [$product_id],
+                        ['bynder_multi_img' => null],
+                        $storeId
+                    );
+                }
+                if (!empty($bynder_doc)) {
+                    $this->productAction->updateAttributes(
+                        [$product_id],
+                        ['bynder_document' => null],
+                        $storeId
+                    );
+                }
+                if (!$product_id) {
+                    $insert_data = [
+                        "sku" => $sku,
+                        "alias_sku" => "",
+                        "message" => "SKU not found in products",
+                        "data_type" => "",
+                        "sync_source" => "1",
+                        "lable" => "0"
+                    ];
+                    $this->getInsertDataTable($insert_data);
+                    continue;
+                }
+            } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+                $insert_data = [
+                    "sku" => $sku,
+                    "alias_sku" => "",
+                    "message" => "SKU not match in products",
+                    "data_type" => "",
+                    "sync_source" => "1",
+                    "lable" => "0"
+                ];
+                $this->getInsertDataTable($insert_data);
+                continue;
+            }
+
+            $aliasSku = $this->datahelper->getSkuByAlias($sku);
+
+            $is_sku_made_alias = 0;
+            if ($aliasSku === null || empty($aliasSku)) {
+                $aliasSku = $sku;
+                $is_sku_made_alias = 1;
+                $this->getApiData($aliasSku, null, $property_id, $collection_value, $selectAttribute, $collection_slug_val, $sku);
+            } else {
+                foreach ($aliasSku as $a_sku) {
+                    if ($a_sku['alias_sku'] == null || empty($a_sku['alias_sku'])) {
+                        $is_sku_made_alias = 1;
+                        $this->getApiData($sku, $a_sku['all_alias_identifier'], $property_id, $collection_value, $selectAttribute, $collection_slug_val, $sku);
+                    } else {
+                        $this->getApiData($a_sku['alias_sku'], $a_sku['all_alias_identifier'], $property_id, $collection_value, $selectAttribute, $collection_slug_val, $sku);
+                    }
+                }
+            }
+            if ($is_sku_made_alias == 0) {
+                $all_alias_identifier = array();
+                $this->getApiData($sku, $all_alias_identifier, $property_id, $collection_value, $selectAttribute, $collection_slug_val, $sku);
+            }
         }
     }
 
@@ -294,6 +316,7 @@ class Psku extends \Magento\Backend\App\Action
             'alias_sku' => $insert_data['alias_sku'],
             'bynder_sync_data' => $insert_data['message'],
             'bynder_data_type' => $insert_data['data_type'],
+            "sync_source" => $insert_data['sync_source'],
             'lable' => $insert_data['lable']
         ];
         $model->setData($data_image_data);
@@ -705,10 +728,10 @@ class Psku extends \Magento\Backend\App\Action
             
         }
         if (count($data_arr) > 0) {
-            $this->getProcessItem($data_arr, $data_val_arr);
+            $this->getProcessItem($data_arr, $data_val_arr, $select_attribute);
         }
         if (count($doc_data_arr) > 0) {
-            $this->getProcessItemDoc($doc_data_arr, $doc_data);
+            $this->getProcessItemDoc($doc_data_arr, $doc_data, $select_attribute);
         } 
         if (count($doc_data_arr) == 0 && count($data_arr) == 0) {
             $result_data = $result->setData(['status' => 0, 'message' => 'No Data Found...']);
@@ -721,9 +744,10 @@ class Psku extends \Magento\Backend\App\Action
      *
      * @param array $data_arr
      * @param array $data_val_arr
+     * @param string $select_attribute
      * @return $this
      */
-    public function getProcessItem($data_arr, $data_val_arr)
+    public function getProcessItem($data_arr, $data_val_arr, $select_attribute)
     {
         $result = $this->resultJsonFactory->create();
         $image_value_details_role = [];
@@ -772,7 +796,8 @@ class Psku extends \Magento\Backend\App\Action
                 $group_media_ids,
                 $byd_media_is_order,
                 $byd_alias_sku,
-                $byn_all_alias_identifier
+                $byn_all_alias_identifier,
+                $select_attribute
             );
         }
     }
@@ -782,9 +807,10 @@ class Psku extends \Magento\Backend\App\Action
      *
      * @param array $data_arr
      * @param array $data_val_arr
+     * @param string $select_attribute
      * @return $this
      */
-    public function getProcessItemDoc($data_arr, $data_val_arr)
+    public function getProcessItemDoc($data_arr, $data_val_arr, $select_attribute)
     {
         $result = $this->resultJsonFactory->create();
         $image_value_details_role = [];
@@ -821,7 +847,10 @@ class Psku extends \Magento\Backend\App\Action
                 $mg_role,
                 $image_alt_text_value,
                 $group_media_ids,
-                $byd_media_is_order
+                $byd_media_is_order,
+                $byd_alias_sku,
+                $byn_all_alias_identifier,
+                $select_attribute
             );
         }
     }
@@ -837,10 +866,10 @@ class Psku extends \Magento\Backend\App\Action
      * @param string $byd_media_is_order
      * @return $this
      */
-    public function getUpdateDoc($img_json, $product_sku_key, $mg_img_role_option, $img_alt_text, $bynder_media_ids, $byd_media_is_order, $byd_alias_sku, $byn_all_alias_identifier)
+    public function getUpdateDoc($img_json, $product_sku_key, $mg_img_role_option, $img_alt_text, $bynder_media_ids, $byd_media_is_order, $byd_alias_sku, $byn_all_alias_identifier, $select_attribute)
     {
         $result = $this->resultJsonFactory->create();
-        $select_attribute = $this->getRequest()->getParam('select_attribute');
+        //$select_attribute = $this->getRequest()->getParam('select_attribute');
         $image_detail = [];
         $video_detail = [];
         $diff_image_detail = [];
@@ -986,6 +1015,7 @@ class Psku extends \Magento\Backend\App\Action
                     "sku" => $product_sku_key . " alias sku " . $alias_key,
                     "message" => $log_value_array,
                     "data_type" => "3", // 3 = Document
+                    "sync_source" => "1",
                     "lable" => 1
                 ];
                 $this->getInsertDataTable($insert_data);
@@ -1007,12 +1037,12 @@ class Psku extends \Magento\Backend\App\Action
      * @param string $byd_media_is_order
      * @param string $byd_alias_sku
      * @param string $byn_all_alias_identifier
+     * @param string $select_attribute
      * @return $this
      */
-    public function getUpdateImage($img_json, $product_sku_key, $mg_img_role_option, $img_alt_text, $bynder_media_ids, $byd_media_is_order, $byd_alias_sku, $byn_all_alias_identifier)
+    public function getUpdateImage($img_json, $product_sku_key, $mg_img_role_option, $img_alt_text, $bynder_media_ids, $byd_media_is_order, $byd_alias_sku, $byn_all_alias_identifier, $select_attribute)
     {
         $result = $this->resultJsonFactory->create();
-        $select_attribute = $this->getRequest()->getParam('select_attribute');
         $image_detail = [];
         $video_detail = [];
         $diff_image_detail = [];
@@ -1284,9 +1314,10 @@ class Psku extends \Magento\Backend\App\Action
                     'alias_sku' => !empty($byn_all_alias_identifier[0]) ? $alias_key : null,
                     "message" => $log_value_array,
                     "data_type" => "1",
+                    "sync_source" => "1",
                     "lable" => 1
                 ];
-            $this->getInsertDataTable($insert_data);
+                $this->getInsertDataTable($insert_data);
             } elseif ($select_attribute == "video") {
                 $videovalue = $this->getExistingAttributeData($_product, 'bynder_multi_img', $storeId);
                 
@@ -1426,6 +1457,7 @@ class Psku extends \Magento\Backend\App\Action
                     'alias_sku' => !empty($byn_all_alias_identifier[0]) ? $alias_key : null,
                     "message" => $log_value_array,
                     "data_type" => "2",
+                    "sync_source" => "1",
                     "lable" => 1
                 ];
             } elseif ($select_attribute == "all_attribute") {
@@ -1639,6 +1671,7 @@ class Psku extends \Magento\Backend\App\Action
                         'alias_sku' => !empty($byn_all_alias_identifier[0]) ? $alias_key : null,
                         "message" => $log_value_array,
                         "data_type" => "1", // 1 = Image
+                        "sync_source" => "1",
                         "lable" => 1
                     ];
                     $this->getInsertDataTable($insert_data);
@@ -1652,6 +1685,7 @@ class Psku extends \Magento\Backend\App\Action
                         'alias_sku' => !empty($byn_all_alias_identifier[0]) ? $alias_key : null,
                         "message" => $log_value_array,
                         "data_type" => "2", // 2 = Video
+                        "sync_source" => "1",
                         "lable" => 1
                     ];
                     $this->getInsertDataTable($insert_data);
@@ -1665,6 +1699,7 @@ class Psku extends \Magento\Backend\App\Action
                         'alias_sku' => !empty($byn_all_alias_identifier[0]) ? $alias_key : null,
                         "message" => $log_value_array,
                         "data_type" => "3", // 3 = Document
+                        "sync_source" => "1",
                         "lable" => 1
                     ];
                     $this->getInsertDataTable($insert_data);
@@ -1771,7 +1806,6 @@ class Psku extends \Magento\Backend\App\Action
         $result = $this->resultJsonFactory->create();                 
         $get_data = $this->datahelper->getImageSyncWithProperties($bd_sku, $property_id, $collection_value);
         $getIsJson = $this->getIsJSON($get_data);
-        
         if (!empty($get_data) && $getIsJson) {
             $respon_array = json_decode($get_data, true);
         
@@ -1790,15 +1824,18 @@ class Psku extends \Magento\Backend\App\Action
                             $aliasSku, // The alias SKU
                             $all_alias_identifier // The specific identifier for this SKU
                         );
+                        $this->datahelper->updateIsSync($current_sku, 1);
                     } catch (Exception $e) {
                         $insert_data = [
                             "sku" => $sku,
                             'alias_sku' => $aliasSku,
                             "message" => $e->getMessage(),
                             "data_type" => "",
+                            "sync_source" => "1",
                             "lable" => "0"
                         ];
                         $this->getInsertDataTable($insert_data);
+                        $this->datahelper->updateIsSync($sku, 1);
                     }
                 } else {
                     $insert_data = [
@@ -1806,9 +1843,11 @@ class Psku extends \Magento\Backend\App\Action
                         'alias_sku' => $aliasSku,
                         "message" => $convert_array['data'],
                         "data_type" => "",
+                        "sync_source" => "1",
                         "lable" => "0"
                     ];
                     $this->getInsertDataTable($insert_data);
+                    $this->datahelper->updateIsSync($sku, 1);
                 }
             } else {
                 $insert_data = [
@@ -1816,6 +1855,7 @@ class Psku extends \Magento\Backend\App\Action
                     'alias_sku' => "",
                     "message" => 'Please Select The Metaproperty First.....',
                     "data_type" => "",
+                    "sync_source" => "1",
                     "lable" => "0"
                 ];
                 $this->getInsertDataTable($insert_data);

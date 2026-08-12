@@ -211,6 +211,7 @@ class FeatchNullDataToMagento
                                             $alias_sku_value,
                                             $all_alias_identifier_value
                                         );
+                                        $this->datahelper->updateIsSync($current_sku, 1); 
                                     } catch (Exception $e) {
                                         $insert_data = [
                                             "sku" => $sku,
@@ -223,6 +224,7 @@ class FeatchNullDataToMagento
                                             "lable" => "0"
                                         ];
                                         $this->getInsertDataTable($insert_data);
+                                        $this->datahelper->updateIsSync($sku, 1); 
                                         $this->updateBynderCronSync($sku);
                                     }
                                 } else {
@@ -237,6 +239,7 @@ class FeatchNullDataToMagento
                                         "lable" => "0"
                                     ];
                                     $this->getInsertDataTable($insert_data);
+                                    $this->datahelper->updateIsSync($sku, 1); 
                                     $this->updateBynderCronSync($sku);
                                 }
                             } else {
@@ -284,6 +287,7 @@ class FeatchNullDataToMagento
                                             $sku,
                                             $all_alias_identifier_value
                                         );
+                                        $this->datahelper->updateIsSync($current_sku, 1);  
                                     } catch (Exception $e) {
                                         $insert_data = [
                                             "sku" => $sku,
@@ -296,6 +300,7 @@ class FeatchNullDataToMagento
                                             "lable" => "0"
                                         ];
                                         $this->getInsertDataTable($insert_data);
+                                        $this->datahelper->updateIsSync($sku, 1); 
                                         $this->updateBynderCronSync($sku);
                                     }
                                 } else {
@@ -310,6 +315,7 @@ class FeatchNullDataToMagento
                                         "lable" => "0"
                                     ];
                                     $this->getInsertDataTable($insert_data);
+                                    $this->datahelper->updateIsSync($sku, 1); 
                                     $this->updateBynderCronSync($sku);
                                 }
                             } else {
@@ -340,7 +346,7 @@ class FeatchNullDataToMagento
                         }
                     }
                 }
-            }
+            } 
         }
         return true;
     }

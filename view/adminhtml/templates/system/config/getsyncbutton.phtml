@@ -2,98 +2,116 @@
     <?= $block->getButtonHtml(); ?>
 </div>
 <script>
-    require([
-        'jquery',
-        'prototype'
-    ], function ($) {
+require([
+    'jquery',
+    'prototype'
+], function ($) {
 
-        var checkbox_checked = 0;
-        var sku_limit = 0;
-        $("#bt_id_3").hide();
-        $('input[type="checkbox"]').change(function () {
-            if ($(this).is(':checked')) {
-                $("#row_byndersyncdata_bynder_sync_data_sku_limit").hide();
-                checkbox_checked = 1;
+    var checkbox_checked = 0;
+    var sku_limit = 0;
+    $("#bt_id_3").hide();
 
-                // Check if the button already exists to avoid duplication
+    // NEW: toggles bt_id_1 / bt_id_3 based on how many SKUs are currently
+    // typed into the textarea, independent of any button click.
+    function toggleButtonsBySkuTextarea() {
+        // When the "all pending" checkbox is checked, that mode already
+        // controls the buttons (see the checkbox handler below) - don't
+        // let manual typing fight with it.
+        if (checkbox_checked == 1) {
+            return;
+        }
 
-                $("#bt_id_3").show();
+        var product_sku = $('textarea#byndersyncdata_bynder_sync_data_sku').val();
+        var skuArray = product_sku
+            .split(',')
+            .map(function (sku) { return sku.trim(); })
+            .filter(function (sku) { return sku !== ''; });
 
-                $("#bt_id_1").hide();
-            } else {
-                $("#row_byndersyncdata_bynder_sync_data_sku_limit").show();
-                checkbox_checked = 0;
-                $("#bt_id_3").hide();
+        if (skuArray.length > 20) {
+            $("#bt_id_3").show();
+            $("#bt_id_1").hide();
+        } else {
+            $("#bt_id_3").hide();
+            $("#bt_id_1").show();
+        }
+    }
 
-                $("#bt_id_1").show();
+    // 'input' covers typing/paste/cut, 'change' covers programmatic
+    // .val() updates (e.g. after the AJAX "get SKU" call fills it in).
+    $('textarea#byndersyncdata_bynder_sync_data_sku').on('input change', function () {
+        toggleButtonsBySkuTextarea();
+    });
 
-                // Remove the button when unchecked
-            }
-        });
+    // Run once on load in case the textarea is pre-filled.
+    toggleButtonsBySkuTextarea();
 
-        $('#bt_id_2').click(function () {
-            var product_sku = $('textarea#byndersyncdata_bynder_sync_data_sku').val();
-            var select_attribute = $('select#byndersyncdata_bynder_sync_data_select').val();
-            if (checkbox_checked == 0) {
-                sku_limit = $('#byndersyncdata_bynder_sync_data_sku_limit').val();
-            } else {
-                sku_limit = 0;
-            }
+    $('input[type="checkbox"]').change(function () {
+        if ($(this).is(':checked')) {
+            $("#row_byndersyncdata_bynder_sync_data_sku_limit").hide();
+            checkbox_checked = 1;
+            $("#bt_id_3").show();
+            $("#bt_id_1").hide();
+        } else {
+            $("#row_byndersyncdata_bynder_sync_data_sku_limit").show();
+            checkbox_checked = 0;
+            // Re-evaluate against whatever's currently in the textarea
+            // instead of blindly showing bt_id_1 again.
+            toggleButtonsBySkuTextarea();
+        }
+    });
 
+    $('#bt_id_2').click(function () {
+        var product_sku = $('textarea#byndersyncdata_bynder_sync_data_sku').val();
+        var select_attribute = $('select#byndersyncdata_bynder_sync_data_select').val();
+        if (checkbox_checked == 0) {
+            sku_limit = $('#byndersyncdata_bynder_sync_data_sku_limit').val();
+        } else {
+            sku_limit = 0;
+        }
 
-            var params = {
-                product_sku: product_sku,
-                select_attribute: select_attribute,
-                sku_limit: sku_limit
-            };
-            new Ajax.Request('<?= $block->escapeUrl($block->getAjaxUrl()); ?>', {
-                parameters: params,
-                loaderArea: true,
-                asynchronous: true,
+        var params = {
+            product_sku: product_sku,
+            select_attribute: select_attribute,
+            sku_limit: sku_limit
+        };
+        new Ajax.Request('<?= $block->escapeUrl($block->getAjaxUrl()); ?>', {
+            parameters: params,
+            loaderArea: true,
+            asynchronous: true,
 
-                beforeSend: function () {
-                    $('body').trigger('processStart');
-                },
-                onSuccess: function (transport) {
-                    var response = JSON.parse(transport.responseText);
-					console.log("response ", response);
-                    var resultText = '';
-                    if (response.status == 1) {
-                        resultText = response.message
-                        var skuArray = resultText.split(',').map(sku => sku.trim()).filter(sku => sku !== '');
-						
-                        console.log("Total SKUs:", skuArray.length);
-                        console.log("SKUs:", skuArray);
-                        if (skuArray.length <= 20) {
-                            console.log("hello");
-                            $("#bt_id_3").hide();
-                            $("#bt_id_1").show();
-                        } else {
-                            $("#bt_id_3").show();
-                            $("#bt_id_1").hide();
-                            console.log("demo");
-                            
-                        }
-                        $('#byndersyncdata_bynder_sync_data_sku').val(resultText);
-                        $(".success-msg-sync").show();
-                        $(".error-msg-sync").hide();
-                        $(".success-msg-sync").html("Sku Get Successfully...!");
-                        setTimeout(function () {
-                            $('.success-msg-sync').delay(5000).fadeOut('slow');
-                        }, 5000);
-                    } else {
-                        resultText = transport.statusText;
-                        $('#byndersyncdata_bynder_sync_data_sku').val('');
-                        $(".success-msg-sync").hide();
-                        $(".error-msg-sync").show();
-                        $(".error-msg-sync").html("There is not any empty Bynder Data in product.");
-                        setTimeout(function () {
-                            $('.error-msg-sync').delay(5000).fadeOut('slow');
-                        }, 5000);
-                    }
+            beforeSend: function () {
+                $('body').trigger('processStart');
+            },
+            onSuccess: function (transport) {
+                var response = JSON.parse(transport.responseText);
+                console.log("response ", response);
+                var resultText = '';
+                if (response.status == 1) {
+                    resultText = response.message;
+                    $('#byndersyncdata_bynder_sync_data_sku').val(resultText);
+                    // .val() alone doesn't fire 'change' in all browsers,
+                    // so trigger it explicitly to run the toggle logic.
+                    $('#byndersyncdata_bynder_sync_data_sku').trigger('change');
 
+                    $(".success-msg-sync").show();
+                    $(".error-msg-sync").hide();
+                    $(".success-msg-sync").html("Sku Get Successfully...!");
+                    setTimeout(function () {
+                        $('.success-msg-sync').delay(5000).fadeOut('slow');
+                    }, 5000);
+                } else {
+                    resultText = transport.statusText;
+                    $('#byndersyncdata_bynder_sync_data_sku').val('');
+                    $('#byndersyncdata_bynder_sync_data_sku').trigger('change');
+                    $(".success-msg-sync").hide();
+                    $(".error-msg-sync").show();
+                    $(".error-msg-sync").html("There is not any empty Bynder Data in product.");
+                    setTimeout(function () {
+                        $('.error-msg-sync').delay(5000).fadeOut('slow');
+                    }, 5000);
                 }
-            });
+            }
         });
     });
+});
 </script>

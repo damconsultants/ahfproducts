@@ -35,6 +35,7 @@
       <column xsi:type="text" name="alias_sku" nullable="true"  comment="Alias sku" />
       <column xsi:type="text" name="bynder_sync_data" nullable="true"  comment="bynder data sync. image, doc, video" />
       <column xsi:type="text" name="bynder_data_type" nullable="true"  comment="1= Image , 2= doc,3= video" />
+      <column xsi:type="text" name="sync_source" nullable="true"  comment="1= Manual , 2= Update Cron" />
       <column xsi:type="int" name="lable" nullable="false" comment="Label" />
       <column name="created_at" nullable="false" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="false"/>
       <column name="updated_at" nullable="true" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="true"/>

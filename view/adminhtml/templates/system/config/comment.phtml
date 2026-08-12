@@ -11,6 +11,12 @@
 <div id="DeleteDataProduct" style="display:none;">
     <b><h3>Using this cron job, we are fetching all images from Ahfproducts which does not have any single images into magento product.</h3></b>
 </div>
+<div id="UpdateSKUToMagento" style="display:none;">
+    <b><h3>This cron job is used to synchronize product data in bulk. When SKUs are synced from the configuration, all of the SKUs are first stored in a dedicated database table. When the cron job runs, it processes the stored SKUs, fetches the corresponding data from the API, and updates the respective products in Magento with the returned response.</h3></b>
+</div>
+<div id="UpdateAliasSKUToMagento" style="display:none;">
+    <b><h3>This cron job is used to synchronize new alias SKUs. When a new alias SKU is added for an existing product, the cron job identifies the alias SKU, fetches the corresponding image data, and updates the product images in Magento. This ensures that products associated with alias SKUs always display the correct images.</h3></b>
+</div>
 <script>
     require(
         [
@@ -48,6 +54,16 @@
             var popup = modal(options, $('#featchNullSKUToMagento'));
             window.FeatchNullSKUToMagento = function() {
                 $('#featchNullSKUToMagento').modal('openModal');
+            };
+
+            var popup = modal(options, $('#UpdateSKUToMagento'));
+            window.UpdateSKUToMagento = function() {
+                $('#UpdateSKUToMagento').modal('openModal');
+            };
+
+            var popup = modal(options, $('#UpdateAliasSKUToMagento'));
+            window.UpdateAliasSKUToMagento = function() {
+                $('#UpdateAliasSKUToMagento').modal('openModal');
             };
             
         }  

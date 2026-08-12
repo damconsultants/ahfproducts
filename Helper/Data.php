@@ -6,6 +6,7 @@ use \Magento\Framework\App\Helper\AbstractHelper;
 use Magento\Store\Model\ScopeInterface;
 use Bounteous\SkuAlias\Model\ResourceModel\Alias\CollectionFactory as AliasCollectionFactory;
 use Bounteous\SkuAlias\Api\AliasRepositoryInterface;
+use Bounteous\SkuAlias\Model\ResourceModel\Alias as AliasResource;
 
 class Data extends AbstractHelper
 {
@@ -64,6 +65,7 @@ class Data extends AbstractHelper
     public $permanent_token = "";
     private AliasCollectionFactory $aliasCollectionFactory;
     private AliasRepositoryInterface $aliasRepository;
+    private AliasResource $resource;
 
     public const BYNDER_DOMAIN = 'bynderconfig/bynder_credential/bynderdomain';
     public const PERMANENT_TOKEN = 'bynderconfig/bynder_credential/permanent_token';
@@ -72,6 +74,8 @@ class Data extends AbstractHelper
     public const FETCH_CRON = 'cronimageconfig/configurable_cron/fetch_enable';
     public const AUTO_CRON = 'cronimageconfig/auto_add_bynder/auto_enable';
     public const DELETE_CRON = 'cronimageconfig/delete_cron_bynder/delete_enable';
+    public const UPDATE_SKU_CRON = 'cronimageconfig/update_all_sku/update_enable';
+    public const UPDATE_ALIAS_SKU_CRON = 'cronimageconfig/update_all_aliassku/update_alias_enable';
     public const FETCH_PRODUCT_SKU_LIMIT = 'cronimageconfig/configurable_cron/fetch_product_sku_limt';
     public const AUTO_PRODUCT_SKU_LIMIT = 'cronimageconfig/auto_add_bynder/auto_product_sku_limt';
     public const PRODUCT_SKU_LIMIT = 'cronimageconfig/set_limit_product_sku/product_sku_limt';
@@ -106,7 +110,8 @@ class Data extends AbstractHelper
         \Magento\Framework\Registry $registry,
         \Magento\ConfigurableProduct\Block\Adminhtml\Product\Steps\Bulk $bulk,
         AliasCollectionFactory $aliasCollectionFactory,
-        AliasRepositoryInterface $aliasRepository
+        AliasRepositoryInterface $aliasRepository,
+        AliasResource $resource,
     ) {
         $this->cookieMetadataFactory = $cookieMetadataFactory;
         $this->cookieManager = $cookieManager;
@@ -119,6 +124,7 @@ class Data extends AbstractHelper
         $this->_registry = $registry;
         $this->aliasCollectionFactory = $aliasCollectionFactory;
         $this->aliasRepository = $aliasRepository;
+        $this->resource = $resource;
         parent::__construct($context);
     }
     /**
@@ -280,6 +286,24 @@ class Data extends AbstractHelper
     public function getDeleteCronEnable()
     {
         return $this->getStoreConfig(self::DELETE_CRON);
+    }
+    /**
+     * Get UpdateAllSku cron enable
+     *
+     * @return $this
+     */
+    public function getUpdateSkuCronEnable()
+    {
+        return $this->getStoreConfig(self::UPDATE_SKU_CRON);
+    }
+    /**
+     * Get UpdateAllSku cron enable
+     *
+     * @return $this
+     */
+    public function getUpdateAliasSkuCronEnable()
+    {
+        return $this->getStoreConfig(self::UPDATE_ALIAS_SKU_CRON);
     }
     /**
      * Get Permanen Token
@@ -1001,6 +1025,45 @@ class Data extends AbstractHelper
         }
 
         return $sku;
+    }
+    /**
+     * Alias Sku
+     *
+     * @param string $sku
+     * @param int $status
+     * @return $this
+     */
+    public function updateIsSync(string $sku, int $status = 1): bool
+    {
+        $connection = $this->resource->getConnection();
+        $connection->update(    
+            $this->resource->getMainTable(),
+            ['is_image_synced' => $status],
+            ['sku = ?' => $sku]
+        );
+        return true;
+    }
+    /**
+     * Get all pending sync SKUs (is_sync IS NULL OR is_sync = 0)
+     *
+     * @return array
+     */
+    public function getPendingSyncSkus(): array
+    {
+        $collection = $this->aliasCollectionFactory->create();
+        $collection->addFieldToFilter(
+            'is_image_synced',
+            [
+                ['null' => true],
+                ['eq' => 0]
+            ]
+        );
+        $skus = [];
+        foreach ($collection as $item) {
+            $skus[] = $item->getSku();
+        }
+
+        return array_unique($skus);
     }
 
 }

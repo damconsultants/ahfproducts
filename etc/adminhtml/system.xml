@@ -190,6 +190,78 @@
                     <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\AutoAddDataProduct</frontend_model>
                 </field>
             </group>
+            <group id="update_all_sku" translate="label" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Update All SKU Cron</label>
+                <field id="update_enable" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Enable Cron</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="update_sku_frequency" translate="label" type="select" sortOrder="2" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Frequency</label>
+                    <source_model>DamConsultants\Ahfproducts\Model\Config\Source\Frequency</source_model>
+                    <backend_model>DamConsultants\Ahfproducts\Model\Config\UpdateAllSkuCronConfig</backend_model>
+                    <comment>Select The Cron Frequency.</comment>
+                    <depends>
+                        <field id="update_enable">1</field>
+                    </depends>
+                </field>
+                <field id="your_min_update_sku_frequency" translate="label" type="text" sortOrder="3" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Minutes</label>
+                    <validate>validate-digits</validate>
+                    <comment>Enter Your Only Number.</comment>
+                    <depends>
+                        <field id="update_sku_frequency">E</field>
+                        <field id="update_enable">1</field>
+                    </depends>
+                </field>
+                <field id="update_sku_time" translate="label comment" sortOrder="4" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Start Time</label>
+                    <comment>Select The Cron Start Time.</comment>
+                    <depends>
+                        <field id="update_sku_frequency" separator=",">D,W,M</field>
+                        <field id="update_enable">1</field>
+                    </depends>
+                </field>
+                <field id="update_all_sku_info" translate="label" type="button" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\UpdateSku</frontend_model>
+                </field>
+            </group>
+            <group id="update_all_aliassku" translate="label" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="0">
+                <label>Update All New Alias Sku Cron</label>
+                <field id="update_alias_enable" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Enable Cron</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="update_alias_sku_frequency" translate="label" type="select" sortOrder="2" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Frequency</label>
+                    <source_model>DamConsultants\Ahfproducts\Model\Config\Source\Frequency</source_model>
+                    <backend_model>DamConsultants\Ahfproducts\Model\Config\UpdateAllAliasSkuCronConfig</backend_model>
+                    <comment>Select The Cron Frequency.</comment>
+                    <depends>
+                        <field id="update_alias_enable">1</field>
+                    </depends>
+                </field>
+                <field id="your_min_update_alias_sku_frequency" translate="label" type="text" sortOrder="3" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Minutes</label>
+                    <validate>validate-digits</validate>
+                    <comment>Enter Your Only Number.</comment>
+                    <depends>
+                        <field id="update_alias_sku_frequency">E</field>
+                        <field id="update_alias_enable">1</field>
+                    </depends>
+                </field>
+                <field id="update_alias_sku_time" translate="label comment" sortOrder="4" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Start Time</label>
+                    <comment>Select The Cron Start Time.</comment>
+                    <depends>
+                        <field id="update_alias_sku_frequency" separator=",">D,W,M</field>
+                        <field id="update_alias_enable">1</field>
+                    </depends>
+                </field>
+                <field id="update_all_alias_sku_info" translate="label" type="button" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\UpdateAliasSku</frontend_model>
+                </field>
+            </group>
 			<group id="delete_cron_bynder" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="0">
                 <label>Delete Data Product</label>
 				<field id="delete_enable" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">

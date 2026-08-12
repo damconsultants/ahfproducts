@@ -52,6 +52,19 @@
                 </item>
                 </argument>
             </action>
+            <action name="resync">
+                <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="type" xsi:type="string">resync</item>
+                    <item name="label" xsi:type="string" translate="true">Re-Sync</item>
+                    <item name="url" xsi:type="url" path="bynder/index/massresyncmanualskudata"/>
+                    <item name="confirm" xsi:type="array">
+                        <item name="title" xsi:type="string" translate="true">Re-Sync Data?</item>
+                        <item name="message" xsi:type="string" translate="true">Are you sure you want to Re-Sync the selected Data?</item>
+                    </item>
+                </item>
+                </argument>
+            </action>
         </massaction>
         <bookmark name="bookmarks">
             <argument name="data" xsi:type="array">
@@ -203,6 +216,17 @@
 				</item>
 			</argument>
 		</column>
+        <column name="sync_source" class="DamConsultants\Ahfproducts\Ui\Component\Listing\Column\SyncSource">
+			<argument name="data" xsi:type="array">
+                <item name="options" xsi:type="object">DamConsultants\Ahfproducts\Model\Config\Source\SyncSource</item>
+				<item name="config" xsi:type="array">
+					<item name="filter" xsi:type="string">select</item>
+                    <item name="dataType" xsi:type="string">select</item>
+					<item name="bodyTmpl" xsi:type="string">ui/grid/cells/html</item>
+					<item name="label" xsi:type="string" translate="true">Sync Source</item>
+				</item>
+			</argument>
+		</column>
         <column name="created_at" class="Magento\Ui\Component\Listing\Columns\Date">
             <argument name="data" xsi:type="array">
                 <item name="config" xsi:type="array">
@@ -237,6 +261,22 @@
             </argument>
             <settings>
                 <label translate="true">Delete</label>
+            </settings>
+        </actionsColumn>
+        <actionsColumn name="resync_action" class="DamConsultants\Ahfproducts\Ui\Component\Listing\Column\ReSyncDataUpdate">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="indexField" xsi:type="string">id</item>
+                    <item name="viewUrlPath" xsi:type="string">bynder/index/resyncdataupdate</item>
+                    <item name="urlEntityParamName" xsi:type="string">id</item>
+                    <item name="confirm" xsi:type="array">
+                        <item name="title" xsi:type="string" translate="true">Re Sync SKU ?</item>
+                        <item name="message" xsi:type="string" translate="true">Are you sure you want to Re Sync This Sku?</item>
+                    </item>
+                </item>
+            </argument>
+            <settings>
+                <label translate="true">Re-Sync</label>
             </settings>
         </actionsColumn>
     </columns>
