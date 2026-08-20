@@ -187,24 +187,7 @@ class Psku extends \Magento\Backend\App\Action
             }
             try {
                 $product_id = $this->product->getIdBySku($sku);
-                $_product = $this->_productRepository->get($sku);
-                $bynder_multi_img = $_product->getBynderMultiImg();
-                $bynder_doc = $_product->getBynderDocument();
-                $storeId = $this->storeManagerInterface->getStore()->getId();
-                if (!empty($bynder_multi_img)) {
-                    $this->productAction->updateAttributes(
-                        [$product_id],
-                        ['bynder_multi_img' => null],
-                        $storeId
-                    );
-                }
-                if (!empty($bynder_doc)) {
-                    $this->productAction->updateAttributes(
-                        [$product_id],
-                        ['bynder_document' => null],
-                        $storeId
-                    );
-                }
+                
                 if (!$product_id) {
                     $insert_data = [
                         "sku" => $sku,
@@ -231,7 +214,7 @@ class Psku extends \Magento\Backend\App\Action
             }
 
             $aliasSku = $this->datahelper->getSkuByAlias($sku);
-
+    
             $is_sku_made_alias = 0;
             if ($aliasSku === null || empty($aliasSku)) {
                 $aliasSku = $sku;
@@ -1814,6 +1797,25 @@ class Psku extends \Magento\Backend\App\Action
                 if ($convert_array['status'] == 1) {
                     
                     $current_sku = $sku; // Original SKU
+                    $product_id = $this->product->getIdBySku($sku);
+                    $_product = $this->_productRepository->get($sku);
+                    $bynder_multi_img = $_product->getBynderMultiImg();
+                    $bynder_doc = $_product->getBynderDocument();
+                    $storeId = $this->storeManagerInterface->getStore()->getId();
+                    if (!empty($bynder_multi_img)) {
+                        $this->productAction->updateAttributes(
+                            [$product_id],
+                            ['bynder_multi_img' => null],
+                            $storeId
+                        );
+                    }
+                    if (!empty($bynder_doc)) {
+                        $this->productAction->updateAttributes(
+                            [$product_id],
+                            ['bynder_document' => null],
+                            $storeId
+                        );
+                    }
                     try {
                         // Pass the specific all_alias_identifier for this alias SKU
                         $this->getDataItem(

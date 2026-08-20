@@ -84,6 +84,9 @@ class Data extends AbstractHelper
     public const PLACEHOLDER_IMAGE = 'byndeimageconfig/bynder_image/placeholder_base';
     public const API_CALLED = 'https://developer.thedamconsultants.com/';
     public const IFRAME_URL = 'https://trello.thedamconsultants.com/bynder-registration';
+    public const XML_PATH_UPDATE_SKU_FREQUENCY = 'cronimageconfig/update_all_sku/update_sku_frequency';
+    public const XML_PATH_ENTER_MIN = 'cronimageconfig/update_all_sku/your_min_update_sku_frequency';
+
 
     /**
      * Data Helper
@@ -252,6 +255,30 @@ class Data extends AbstractHelper
     public function getUpdateSkuLimitConfig()
     {
         return (string) $this->getStoreConfig(self::UPDATE_SKU_LIMIT);
+    }
+    /**
+     * Frequency of the "Update All SKU" cron: E, D, W or M
+     *
+     * @return string
+     */
+    public function getUpdateSkuFrequency()
+    {
+        return (string)$this->scopeConfig->getValue(
+            self::XML_PATH_UPDATE_SKU_FREQUENCY,
+            \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+        );
+    }
+    /**
+     * Frequency of the "Update All SKU" Enter Min
+     *
+     * @return string
+     */
+    public function getUpdateSkuMin()
+    {
+        return (string)$this->scopeConfig->getValue(
+            self::XML_PATH_ENTER_MIN,
+            \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+        );
     }
     /**
      * Get Product Sku Limit Config
@@ -674,7 +701,7 @@ class Data extends AbstractHelper
      * @param string $property_id
      * @param string $collection_data_value
      */
-    public function getImageSyncWithProperties($sku_id, $property_id, $collection_data_value)
+    public function getImageSyncWithPropertiesOld($sku_id, $property_id, $collection_data_value)
     {
         $fields = [
             'domain_name' => $this->_storeManager->getStore()->getBaseUrl(),
@@ -703,6 +730,63 @@ class Data extends AbstractHelper
 
         $response = $this->_curl->getBody();
         return $response;
+    }
+    /**
+     * Get ImageSyncWithProperties
+     *
+     * @return $this
+     * @param string $sku_id
+     * @param string $property_id
+     * @param string $collection_data_value
+     */
+    public function getImageSyncWithProperties($sku_id, $property_id, $collection_data_value)
+    {
+        $fields = json_encode([
+            'domain_name' => $this->_storeManager->getStore()->getBaseUrl(),
+            'bynder_domain' => $this->getBynderDom(),
+            'permanent_token' => $this->getPermanenToken(),
+            'licence_token' => $this->getLicenceToken(),
+            'sku_id' => $sku_id,
+            'property_id' => $property_id,
+            'bynder_metaproperty_collection' => $collection_data_value
+        ]);
+
+        $url = self::API_CALLED . 'ahfproducts-bynder-skudetails-new';
+        $attempts = 3;
+        $lastError = '';
+
+        for ($i = 1; $i <= $attempts; $i++) {
+            try {
+                $this->_curl->setOption(CURLOPT_URL, $url);
+                $this->_curl->setOption(CURLOPT_RETURNTRANSFER, true);
+                $this->_curl->setOption(CURLOPT_CONNECTTIMEOUT, 30);
+                $this->_curl->setOption(CURLOPT_TIMEOUT, 300);
+                $this->_curl->setOption(CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+                $this->_curl->setOption(CURLOPT_ENCODING, '');
+                $this->_curl->setOption(CURLOPT_MAXREDIRS, 10);
+                $this->_curl->setOption(CURLOPT_FOLLOWLOCATION, true);
+                $this->_curl->setOption(CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+                $this->_curl->setOption(CURLOPT_POSTFIELDS, $fields);
+                $this->_curl->addHeader("Content-Type", "application/json");
+
+                $this->_curl->post($url, '{}');
+                $body = $this->_curl->getBody();
+
+                if ($body !== '' && $body !== null) {
+                    return $body;
+                }
+                $lastError = 'Empty response body';
+            } catch (\Exception $e) {
+                $lastError = $e->getMessage();
+            }
+
+            if ($i < $attempts) {
+                sleep($i * 2); // 2s, then 4s
+            }
+        }
+
+        // Let the caller log it and keep the queue row pending.
+        throw new \Exception('Bynder API unreachable after ' . $attempts . ' attempts: ' . $lastError);
     }
     /**
      * Get DataRemoveForMagento

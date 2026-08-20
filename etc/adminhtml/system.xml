@@ -106,15 +106,6 @@
                     <label>Enable Cron</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                 </field>
-				<field id="fetch_product_sku_limt" translate="label" type="text" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="1">
-                    <label>Enter Your Sku Limit</label>
-                    <validate>validate-digits</validate>
-                    <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
-                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
-					<depends>
-                        <field id="fetch_enable">1</field>
-                     </depends>
-                </field>
                 <field id="frequency" translate="label" type="select" sortOrder="3" showInDefault="1" showInWebsite="0" showInStore="0">
                     <label>Frequency</label>
                     <source_model>DamConsultants\Ahfproducts\Model\Config\Source\Frequency</source_model>
@@ -134,7 +125,17 @@
 						<field id="fetch_enable">1</field>
                     </depends>
                 </field>
-                <field id="time" translate="label comment" sortOrder="4" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
+                <field id="fetch_product_sku_limt" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Your Sku Limit</label>
+                    <validate>validate-digits</validate>
+                    <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
+                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
+					<depends>
+                        <field id="frequency">E</field>
+                        <field id="fetch_enable">1</field>
+                     </depends>
+                </field>
+                <field id="time" translate="label comment" sortOrder="4" type="time" showInDefault="5" showInWebsite="1" showInStore="1">
                     <label>Start Time</label>
                     <comment>Select The Cron Start Time.</comment>
                     <depends>
@@ -153,15 +154,6 @@
 				<field id="auto_enable" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
                     <label>Enable Cron</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
-                </field>
-				<field id="auto_product_sku_limt" translate="label" type="text" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="1">
-                    <label>Enter Your Sku Limit</label>
-                    <validate>validate-digits</validate>
-                    <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
-                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
-					<depends>
-                        <field id="auto_enable">1</field>
-                     </depends>
                 </field>
 				<field id="auto_add_sku_frequency" translate="label" type="select" sortOrder="3" showInDefault="1" showInWebsite="0" showInStore="0">
                     <label>Frequency</label>
@@ -182,7 +174,17 @@
 						<field id="auto_enable">1</field>
                      </depends>
                 </field>
-                <field id="auto_add_sku_time" translate="label comment" sortOrder="4" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
+                <field id="auto_product_sku_limt" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Your Sku Limit</label>
+                    <validate>validate-digits</validate>
+                    <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
+                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
+					<depends>
+                        <field id="auto_add_sku_frequency">E</field>
+                        <field id="auto_enable">1</field>
+                     </depends>
+                </field>
+                <field id="auto_add_sku_time" translate="label comment" sortOrder="5" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Start Time</label>
                     <comment>Select The Cron Start Time.</comment>
                     <depends>
@@ -199,15 +201,6 @@
                 <field id="update_enable" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
                     <label>Enable Cron</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
-                </field>
-                <field id="update_all_sku_limt" translate="label" type="text" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="1">
-                    <label>Enter Your Sku Limit</label>
-                    <validate>validate-digits</validate>
-                    <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
-                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
-					<depends>
-                        <field id="update_enable">1</field>
-                     </depends>
                 </field>
                 <field id="update_sku_frequency" translate="label" type="select" sortOrder="2" showInDefault="1" showInWebsite="0" showInStore="0">
                     <label>Frequency</label>
@@ -228,7 +221,17 @@
                         <field id="update_enable">1</field>
                     </depends>
                 </field>
-                <field id="update_sku_time" translate="label comment" sortOrder="4" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
+                <field id="update_all_sku_limt" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Your Sku Limit</label>
+                    <validate>validate-digits</validate>
+                    <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
+                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
+					<depends>
+                        <field id="update_sku_frequency">E</field>
+                        <field id="update_enable">1</field>
+                     </depends>
+                </field>
+                <field id="update_sku_time" translate="label comment" sortOrder="5" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Start Time</label>
                     <comment>Select The Cron Start Time.</comment>
                     <depends>
@@ -245,15 +248,6 @@
                 <field id="update_alias_enable" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
                     <label>Enable Cron</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
-                </field>
-                <field id="update_all_aliassku_limt" translate="label" type="text" sortOrder="2" showInDefault="1" showInWebsite="1" showInStore="1">
-                    <label>Enter Your Sku Limit</label>
-                    <validate>validate-digits</validate>
-                    <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
-                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
-					<depends>
-                        <field id="update_alias_enable">1</field>
-                     </depends>
                 </field>
                 <field id="update_alias_sku_frequency" translate="label" type="select" sortOrder="2" showInDefault="1" showInWebsite="0" showInStore="0">
                     <label>Frequency</label>
@@ -274,7 +268,17 @@
                         <field id="update_alias_enable">1</field>
                     </depends>
                 </field>
-                <field id="update_alias_sku_time" translate="label comment" sortOrder="4" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
+                <field id="update_all_aliassku_limt" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enter Your Sku Limit</label>
+                    <validate>validate-digits</validate>
+                    <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
+                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
+					<depends>
+                        <field id="update_alias_sku_frequency">E</field>
+                        <field id="update_alias_enable">1</field>
+                     </depends>
+                </field>
+                <field id="update_alias_sku_time" translate="label comment" sortOrder="5" type="time" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Start Time</label>
                     <comment>Select The Cron Start Time.</comment>
                     <depends>

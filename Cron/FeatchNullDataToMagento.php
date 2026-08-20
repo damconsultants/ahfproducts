@@ -136,7 +136,7 @@ class FeatchNullDataToMagento
             $product_collection->getSelect()->limit($product_sku_limit);
         } else {
             //echo "empty ". $product_sku_limit;
-            $product_collection->getSelect()->limit(50);
+            $product_collection->getSelect()->limit(10);
         }
         $product_collection->addAttributeToSelect('*')
             ->addAttributeToFilter(

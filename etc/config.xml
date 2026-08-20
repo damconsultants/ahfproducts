@@ -1,10 +1,25 @@
 <?xml version="1.0"?>
-<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../Store/etc/config.xsd">
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
+        <byndersyncdata>
+            <bynder_sync_data>
+                <sku_limit>10</sku_limit>
+            </bynder_sync_data>
+        </byndersyncdata>
         <cronimageconfig>
-            <set_limit_product_sku>
-                <product_sku_limt>50</product_sku_limt>
-            </set_limit_product_sku>
+            <configurable_cron>
+                <fetch_product_sku_limt>10</fetch_product_sku_limt>
+            </configurable_cron>
+            <auto_add_bynder>
+                <auto_product_sku_limt>10</auto_product_sku_limt>
+            </auto_add_bynder>
+            <update_all_sku>
+                <update_all_sku_limt>10</update_all_sku_limt>
+            </update_all_sku>
+            <update_all_aliassku>
+                <update_all_aliassku_limt>10</update_all_aliassku_limt>
+            </update_all_aliassku>
         </cronimageconfig>
     </default>
 </config>

@@ -25,6 +25,11 @@ class UpdateAllSku
     const RESULT_UPDATED = 'updated';   // data was written into the product attribute
     const RESULT_NO_DATA = 'no_data';   // API answered, but nothing to write
     const RESULT_FAILED  = 'failed';    // API error, bad payload or attribute write failed
+    const FREQUENCY_MINUTES = 'E';
+    const DEFAULT_SKU_LIMIT = 50;
+    const DEFAULT_MIN_SKU_LIMIT = 10;
+    const BATCH_SIZE = 15;          // rows held in memory per batch on D/W/M
+    const QUEUE_ID_FIELD = 'id';     // primary key of the magento_sku queue table
 
     /**
      * @var \Magento\Framework\View\Result\PageFactory
@@ -123,25 +128,50 @@ class UpdateAllSku
      *
      * @return boolean
      */
+        /**
+     * Execute
+     *
+     * Every Minute (E)  -> one batch per run, size = configured SKU limit.
+     * Daily/Weekly/Monthly -> loops through the whole pending queue in batches
+     *                         until nothing is left, so a single run finishes
+     *                         every SKU instead of stopping after one page.
+     *
+     * @return boolean
+     */
     public function execute()
     {
         $enable = $this->datahelper->getUpdateSkuCronEnable();
+        $enterMin = $this->datahelper->getUpdateSkuMin();
         if (!$enable) {
             return false;
         }
-        $product_sku_limit = (int)$this->datahelper->getUpdateSkuLimitConfig();
-        if (empty($product_sku_limit) || $product_sku_limit <= 0) {
-            $product_sku_limit = 50;
-        }
-        $result = $this->resultJsonFactory->create();
-        $skucollection = $this->magentoSkuCollectionFactory->create();
-        $skucollection->addFieldToFilter('status', self::SKU_STATUS_PENDING)
-            ->setPageSize($product_sku_limit)
-            ->setCurPage(1);
 
-        if ($skucollection->getSize() === 0) {
+        $frequency = $this->datahelper->getUpdateSkuFrequency();
+        $is_minute_schedule = ($frequency === self::FREQUENCY_MINUTES);
+
+        if ($is_minute_schedule) {
+            $batch_size = (int)$this->datahelper->getUpdateSkuLimitConfig();
+            if ($batch_size <= 0 || $batch_size > 50) {
+                if($enterMin > 9){
+                    $batch_size = self::DEFAULT_SKU_LIMIT;
+                }else{
+                    $batch_size = self::DEFAULT_MIN_SKU_LIMIT;
+                }
+            }
+        } else {
+            // Not a user setting - just how many rows are held in memory at once.
+            $batch_size = self::BATCH_SIZE;
+        }
+
+        $result = $this->resultJsonFactory->create();
+
+        // Nothing pending at all -> start a fresh cycle over parked rows.
+        $pending_check = $this->magentoSkuCollectionFactory->create()
+            ->addFieldToFilter('status', self::SKU_STATUS_PENDING);
+
+        if ($pending_check->getSize() === 0) {
             $requeued = $this->requeueUnprocessedSkus();
- 
+
             if ($requeued > 0) {
                 return $result->setData([
                     'status' => 0,
@@ -152,7 +182,7 @@ class UpdateAllSku
                     )
                 ]);
             }
- 
+
             return $result->setData(['status' => 0, 'message' => 'No pending SKUs to process.']);
         }
 
@@ -166,155 +196,165 @@ class UpdateAllSku
         $retained_count = 0;
         $no_data_count = 0;
 
-        foreach ($skucollection as $skuData) {
-            $sku = $skuData['sku'];
-            if ($sku == "") {
-                continue;
+        // Cursor on the primary key. Successful rows are deleted and failed rows
+        // stay "pending", so an OFFSET would skip or re-serve records while the
+        // run is in progress. An ascending id is stable under both.
+        $last_id = 0;
+
+        while (true) {
+            $skucollection = $this->magentoSkuCollectionFactory->create();
+            $skucollection->addFieldToFilter('status', self::SKU_STATUS_PENDING)
+                ->addFieldToFilter(self::QUEUE_ID_FIELD, ['gt' => $last_id])
+                ->setOrder(self::QUEUE_ID_FIELD, \Magento\Framework\Data\Collection::SORT_ORDER_ASC)
+                ->setPageSize($batch_size)
+                ->setCurPage(1);
+
+            if ($skucollection->getSize() === 0) {
+                break;
             }
 
-            $select_attribute = $skuData['select_attribute'];
-            $select_store = $skuData['select_store'];
+            foreach ($skucollection as $skuData) {
+                $row_id = (int)$skuData->getData(self::QUEUE_ID_FIELD);
+                if ($row_id > $last_id) {
+                    $last_id = $row_id;
+                }
 
-            try {
-                $product_id = $this->product->getIdBySku($sku);
-                $_product = $this->_productRepository->get($sku);
-                $bynder_multi_img = $_product->getBynderMultiImg();
-                $bynder_doc = $_product->getBynderDocument();
-                $storeId = $this->storeManagerInterface->getStore()->getId();
-                if (!empty($bynder_multi_img)) {
-                    $this->productAction->updateAttributes(
-                        [$product_id],
-                        ['bynder_multi_img' => null],
-                        $storeId
-                    );
+                $sku = $skuData['sku'];
+                if ($sku == "") {
+                    continue;
                 }
-                if (!empty($bynder_doc)) {
-                    $this->productAction->updateAttributes(
-                        [$product_id],
-                        ['bynder_document' => null],
-                        $storeId
-                    );
-                }
-                if (!$product_id) {
-                    $insert_data = [
+
+                $select_attribute = $skuData['select_attribute'];
+                $select_store = $skuData['select_store'];
+
+                try {
+                    $product_id = $this->product->getIdBySku($sku);
+
+                    if (!$product_id) {
+                        $this->getInsertDataTable([
+                            "sku" => $sku,
+                            "alias_sku" => null,
+                            "message" => "SKU not found in products",
+                            "data_type" => "",
+                            "sync_source" => "2",
+                            "lable" => "0"
+                        ]);
+                        // Permanent problem: the SKU does not exist in the catalog, so a
+                        // retry can never succeed. Flag it instead of deleting.
+                        $this->markSkuStatus($skuData, self::SKU_STATUS_FAILED);
+                        $retained_count++;
+                        continue;
+                    }
+                } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+                    $this->getInsertDataTable([
                         "sku" => $sku,
                         "alias_sku" => null,
-                        "message" => "SKU not found in products",
+                        "message" => "SKU not match in products",
                         "data_type" => "",
                         "sync_source" => "2",
                         "lable" => "0"
-                    ];
-                    $this->getInsertDataTable($insert_data);
-                    // Permanent problem: the SKU does not exist in the catalog, so a retry
-                    // can never succeed. Flag it instead of deleting, so the record is kept
-                    // but no longer picked up by the "pending" filter.
+                    ]);
                     $this->markSkuStatus($skuData, self::SKU_STATUS_FAILED);
                     $retained_count++;
                     continue;
                 }
-            } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
-                $insert_data = [
-                    "sku" => $sku,
-                    "alias_sku" => null,
-                    "message" => "SKU not match in products",
-                    "data_type" => "",
-                    "sync_source" => "2",
-                    "lable" => "0"
-                ];
-                $this->getInsertDataTable($insert_data);
-                $this->markSkuStatus($skuData, self::SKU_STATUS_FAILED);
-                $retained_count++;
-                continue;
-            }
 
-            // Collect the outcome of every alias attempt for this queue row.
-            $sync_results = [];
+                // Collect the outcome of every alias attempt for this queue row.
+                $sync_results = [];
 
-            // Get alias SKUs for this product
-            $aliasSku = $this->datahelper->getSkuByAlias($sku);
-            $is_sku_made_alias = 0;
-            if ($aliasSku === null || empty($aliasSku)) {
-                // No alias found, use the product SKU itself
-                $is_sku_made_alias = 1;
-                $sync_results[] = $this->processSku(
-                    $sku,
-                    null,
-                    $select_attribute,
-                    $select_store,
-                    $property_id,
-                    $collection_value,
-                    $collection_slug_val,
-                    null,
-                    $skuData
-                );
-            } else {
-                // Process each alias SKU
-                foreach ($aliasSku as $a_sku) {
-                    if ($a_sku['alias_sku'] == null || empty($a_sku['alias_sku'])) {
-                        $is_sku_made_alias = 1;
-                        $sync_results[] = $this->processSku(
-                            $sku,
-                            null,
-                            $select_attribute,
-                            $select_store,
-                            $property_id,
-                            $collection_value,
-                            $collection_slug_val,
-                            $a_sku['all_alias_identifier'] ?? null,
-                            $skuData
-                        );
-                    } else {
-                        $sync_results[] = $this->processSku(
-                            $sku,
-                            $a_sku['alias_sku'],
-                            $select_attribute,
-                            $select_store,
-                            $property_id,
-                            $collection_value,
-                            $collection_slug_val,
-                            $a_sku['all_alias_identifier'] ?? null,
-                            $skuData
-                        );
+                $aliasSku = $this->datahelper->getSkuByAlias($sku);
+                $is_sku_made_alias = 0;
+                if ($aliasSku === null || empty($aliasSku)) {
+                    $is_sku_made_alias = 1;
+                    $sync_results[] = $this->processSku(
+                        $sku,
+                        null,
+                        $select_attribute,
+                        $select_store,
+                        $property_id,
+                        $collection_value,
+                        $collection_slug_val,
+                        null,
+                        $skuData
+                    );
+                } else {
+                    foreach ($aliasSku as $a_sku) {
+                        if ($a_sku['alias_sku'] == null || empty($a_sku['alias_sku'])) {
+                            $is_sku_made_alias = 1;
+                            $sync_results[] = $this->processSku(
+                                $sku,
+                                null,
+                                $select_attribute,
+                                $select_store,
+                                $property_id,
+                                $collection_value,
+                                $collection_slug_val,
+                                $a_sku['all_alias_identifier'] ?? null,
+                                $skuData
+                            );
+                        } else {
+                            $sync_results[] = $this->processSku(
+                                $sku,
+                                $a_sku['alias_sku'],
+                                $select_attribute,
+                                $select_store,
+                                $property_id,
+                                $collection_value,
+                                $collection_slug_val,
+                                $a_sku['all_alias_identifier'] ?? null,
+                                $skuData
+                            );
+                        }
                     }
                 }
-            }
-            if ($is_sku_made_alias == 0) {
-                $all_alias_identifier = [];
-                $sync_results[] = $this->processSku(
-                    $sku,
-                    null,
-                    $select_attribute,
-                    $select_store,
-                    $property_id,
-                    $collection_value,
-                    $collection_slug_val,
-                    $all_alias_identifier,
-                    $skuData
-                );
+                if ($is_sku_made_alias == 0) {
+                    $all_alias_identifier = [];
+                    $sync_results[] = $this->processSku(
+                        $sku,
+                        null,
+                        $select_attribute,
+                        $select_store,
+                        $property_id,
+                        $collection_value,
+                        $collection_slug_val,
+                        $all_alias_identifier,
+                        $skuData
+                    );
+                }
+
+                $has_update  = in_array(self::RESULT_UPDATED, $sync_results, true);
+                $has_failure = in_array(self::RESULT_FAILED, $sync_results, true);
+                $has_no_data = in_array(self::RESULT_NO_DATA, $sync_results, true);
+
+                if ($has_update && !$has_failure) {
+                    $this->datahelper->updateIsSync($sku, 1);
+                    $this->magentoSku->delete($skuData);
+                    $processed_count++;
+                } elseif ($has_failure) {
+                    // Leave the row as "pending" so the next run tries again.
+                    $retained_count++;
+                } elseif ($has_no_data) {
+                    $this->markSkuStatus($skuData, self::SKU_STATUS_NO_DATA);
+                    $no_data_count++;
+                } else {
+                    $retained_count++;
+                }
             }
 
-            $has_update  = in_array(self::RESULT_UPDATED, $sync_results, true);
-            $has_failure = in_array(self::RESULT_FAILED, $sync_results, true);
-            $has_no_data = in_array(self::RESULT_NO_DATA, $sync_results, true);
+            // Free the batch before loading the next one.
+            $skucollection->clear();
+            unset($skucollection);
+            $this->attributeDataCache = [];
 
-            if ($has_update && !$has_failure) {
-                $this->datahelper->updateIsSync($sku, 1);
-                $this->magentoSku->delete($skuData);
-                $processed_count++;
-            } elseif ($has_failure) {
-                // Leave the row as "pending" so the next run tries again.
-                $retained_count++;
-            } elseif ($has_no_data) {
-                // Every attempt came back empty - nothing to write, nothing to retry.
-                $this->markSkuStatus($skuData, self::SKU_STATUS_NO_DATA);
-                $no_data_count++;
-            } else {
-                // No attempt was made at all (no alias rows resolved) - keep it pending.
-                $retained_count++;
+            // Every Minute: one batch per run, the schedule itself paces the work.
+            if ($is_minute_schedule) {
+                break;
+            }else{
+                sleep(60);
             }
         }
 
-        $result_data = $result->setData([
+        return $result->setData([
             'status' => 1,
             'message' => sprintf(
                 'Sync finished. %d SKU(s) completed and removed from queue, %d SKU(s) marked "no_data", '
@@ -324,8 +364,6 @@ class UpdateAllSku
                 $retained_count
             )
         ]);
-
-        return $result_data;
     }
     
     /**
@@ -442,7 +480,25 @@ class UpdateAllSku
                 ]);
                 return self::RESULT_NO_DATA;
             }
-
+            $product_id = $this->product->getIdBySku($sku);
+            $_product = $this->_productRepository->get($sku);
+            $bynder_multi_img = $_product->getBynderMultiImg();
+            $bynder_doc = $_product->getBynderDocument();
+            $storeId = $this->storeManagerInterface->getStore()->getId();
+            if (!empty($bynder_multi_img)) {
+                $this->productAction->updateAttributes(
+                    [$product_id],
+                    ['bynder_multi_img' => null],
+                    $storeId
+                );
+            }
+            if (!empty($bynder_doc)) {
+                $this->productAction->updateAttributes(
+                    [$product_id],
+                    ['bynder_document' => null],
+                    $storeId
+                );
+            }
             // getDataItem writes to the product attributes and reports what happened.
             $sync_result = $this->getDataItem(
                 $select_attribute,
@@ -1190,6 +1246,7 @@ class UpdateAllSku
         $byn_is_order = [];
         $alias_sku = [];
         $all_alias_identifier = [];
+        $image_alt_text = [];
 
         foreach ($data_arr as $key => $skus) {
             $alias_value = isset($data_val_arr[$key]['alias_sku']) ? $data_val_arr[$key]['alias_sku'] : '';
@@ -1263,7 +1320,8 @@ class UpdateAllSku
         $byn_is_order = [];
         $alias_sku = [];
         $all_alias_identifier = [];
-
+        $image_alt_text = [];
+        
         foreach ($data_arr as $key => $skus) {
             $alias_value = isset($data_val_arr[$key]['alias_sku']) ? $data_val_arr[$key]['alias_sku'] : '';
             $group_key = $skus;
