@@ -25,6 +25,47 @@ use Magento\Store\Model\StoreManagerInterface;
 class Status extends \Magento\Ui\Component\Listing\Columns\Column
 {
     /**
+     * Queue row statuses - keep in sync with
+     * DamConsultants\Ahfproducts\Cron\UpdateAllSku::SKU_STATUS_*
+     */
+    const STATUS_PENDING  = 'pending';
+    const STATUS_NO_DATA  = 'no_data';
+    const STATUS_FAILED   = 'failed';
+    const STATUS_COMPLETE = 'complete';
+
+    /**
+     * Label + colour for every known status.
+     *
+     * @var array
+     */
+    protected $statusMap = [
+        self::STATUS_PENDING => [
+            'label'      => 'Pending',
+            'color'      => '#eb5202',
+            'background' => '#feeee1',
+            'border'     => '#ed4f2e'
+        ],
+        self::STATUS_NO_DATA => [
+            'label'      => 'No Data',
+            'color'      => '#5f5f5f',
+            'background' => '#f5f5f5',
+            'border'     => '#adadad'
+        ],
+        self::STATUS_FAILED => [
+            'label'      => 'Failed',
+            'color'      => '#e02b27',
+            'background' => '#fae5e5',
+            'border'     => '#e02b27'
+        ],
+        self::STATUS_COMPLETE => [
+            'label'      => 'Complete',
+            'color'      => '#5b8116',
+            'background' => '#d0e5a9',
+            'border'     => '#5b8116'
+        ],
+    ];
+
+    /**
      * @var StoreManagerInterface
      */
     protected $storeManager;
@@ -57,28 +98,57 @@ class Status extends \Magento\Ui\Component\Listing\Columns\Column
      */
     public function prepareDataSource(array $dataSource)
     {
-        if (isset($dataSource['data']['items'])) {
-            foreach ($dataSource['data']['items'] as &$item) {
-                
-                if ($item) {
-                    $color = ($item['status'] == 'pending' ? 'red' : 'red');
-                    $true_css = '#d0e5a9 none repeat scroll 0 0';
-                    $false_css = '#feeee1 none repeat scroll 0 0';
-                    $b_ground = ($color == 'green' ? $true_css : $false_css);
-                    $border_color = ($color == 'green' ? ' #5b8116 1px solid' : '#ed4f2e 1px solid');
-                    $button_style = '<span style="color:'.$color.';
-                        font-weight:bold; background:'.$b_ground.';
-                        border:'.$border_color.';
-                        display: block;line-height: 19px;
-                        padding: 0 5px; text-align: center;
-                        text-transform: uppercase;">';
-                    
-                        $button_style .= __('Pending');
-                    $button_style .= '</span>';
-                    $item['status'] = $button_style;
-                }
-            }
+        if (!isset($dataSource['data']['items'])) {
+            return $dataSource;
         }
+
+        $fieldName = $this->getData('name');
+
+        foreach ($dataSource['data']['items'] as &$item) {
+            if (!is_array($item) || !array_key_exists($fieldName, $item)) {
+                continue;
+            }
+
+            $item[$fieldName] = $this->renderStatus($item[$fieldName]);
+        }
+
         return $dataSource;
+    }
+
+    /**
+     * Build the coloured badge for a single status value.
+     *
+     * @param string|null $status
+     * @return string
+     */
+    protected function renderStatus($status)
+    {
+        $key = strtolower(trim((string)$status));
+
+        if (isset($this->statusMap[$key])) {
+            $style = $this->statusMap[$key];
+            $label = __($style['label']);
+        } else {
+            // Unknown / empty value: show it as-is rather than mislabelling it
+            // "Pending". Escaped, because it comes straight from the database.
+            $style = [
+                'color'      => '#5f5f5f',
+                'background' => '#f5f5f5',
+                'border'     => '#adadad'
+            ];
+            $label = $key === ''
+                ? __('Unknown')
+                : htmlspecialchars(ucwords(str_replace('_', ' ', $key)), ENT_QUOTES, 'UTF-8');
+        }
+
+        return '<span style="color:' . $style['color'] . ';'
+            . ' font-weight:bold;'
+            . ' background:' . $style['background'] . ' none repeat scroll 0 0;'
+            . ' border:' . $style['border'] . ' 1px solid;'
+            . ' display:block; line-height:19px;'
+            . ' padding:0 5px; text-align:center;'
+            . ' text-transform:uppercase;">'
+            . $label
+            . '</span>';
     }
 }

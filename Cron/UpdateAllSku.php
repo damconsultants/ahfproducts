@@ -13,6 +13,20 @@ use Exception;
 class UpdateAllSku
 {
     /**
+     * Queue row statuses
+     */
+    const SKU_STATUS_PENDING = 'pending';
+    const SKU_STATUS_NO_DATA = 'no_data';
+    const SKU_STATUS_FAILED  = 'failed';
+
+    /**
+     * Outcome of a single SKU / alias sync attempt
+     */
+    const RESULT_UPDATED = 'updated';   // data was written into the product attribute
+    const RESULT_NO_DATA = 'no_data';   // API answered, but nothing to write
+    const RESULT_FAILED  = 'failed';    // API error, bad payload or attribute write failed
+
+    /**
      * @var \Magento\Framework\View\Result\PageFactory
      */
     protected $resultPageFactory = false;
@@ -115,138 +129,245 @@ class UpdateAllSku
         if (!$enable) {
             return false;
         }
+        $product_sku_limit = (int)$this->datahelper->getUpdateSkuLimitConfig();
+        if (empty($product_sku_limit) || $product_sku_limit <= 0) {
+            $product_sku_limit = 50;
+        }
         $result = $this->resultJsonFactory->create();
         $skucollection = $this->magentoSkuCollectionFactory->create();
-        $skucollection->addFieldToFilter('status', 'pending')->setPageSize(100);
-        
+        $skucollection->addFieldToFilter('status', self::SKU_STATUS_PENDING)
+            ->setPageSize($product_sku_limit)
+            ->setCurPage(1);
+
         if ($skucollection->getSize() === 0) {
+            $requeued = $this->requeueUnprocessedSkus();
+ 
+            if ($requeued > 0) {
+                return $result->setData([
+                    'status' => 0,
+                    'message' => sprintf(
+                        'No pending SKUs. %d SKU(s) with "no_data" / "failed" status were reset to '
+                        . '"pending" and will be processed on the next run.',
+                        $requeued
+                    )
+                ]);
+            }
+ 
             return $result->setData(['status' => 0, 'message' => 'No pending SKUs to process.']);
         }
-        
+
         $property_id = null;
         $collection = $this->metaPropertyCollectionFactory->create()->getData();
         $meta_properties = $this->getMetaPropertiesCollection($collection);
         $collection_value = $meta_properties['collection_data_value'];
         $collection_slug_val = $meta_properties['collection_data_slug_val'];
-        
+
+        $processed_count = 0;
+        $retained_count = 0;
+        $no_data_count = 0;
+
         foreach ($skucollection as $skuData) {
             $sku = $skuData['sku'];
-            if ($sku != "") {
-                $select_attribute = $skuData['select_attribute'];
-                $select_store = $skuData['select_store'];
-                
-                try {
-                    $product_id = $this->product->getIdBySku($sku);
-                    $_product = $this->_productRepository->get($sku);
-                    $bynder_multi_img = $_product->getBynderMultiImg();
-                    $bynder_doc = $_product->getBynderDocument();
-                    $storeId = $this->storeManagerInterface->getStore()->getId();
-                    if (!empty($bynder_multi_img)) {
-                        $this->productAction->updateAttributes(
-                            [$product_id],
-                            ['bynder_multi_img' => null],
-                            $storeId
-                        );
-                    }
-                    if (!empty($bynder_doc)) {
-                        $this->productAction->updateAttributes(
-                            [$product_id],
-                            ['bynder_document' => null],
-                            $storeId
-                        );
-                    }
-                    if (!$product_id) {
-                        $insert_data = [
-                            "sku" => $sku,
-                            "alias_sku" => null,
-                            "message" => "SKU not found in products",
-                            "data_type" => "",
-                            "sync_source" => "2",
-                            "lable" => "0"
-                        ];
-                        $this->getInsertDataTable($insert_data);
-                        $this->magentoSku->delete($skuData);
-                        continue;
-                    }
-                } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+            if ($sku == "") {
+                continue;
+            }
+
+            $select_attribute = $skuData['select_attribute'];
+            $select_store = $skuData['select_store'];
+
+            try {
+                $product_id = $this->product->getIdBySku($sku);
+                $_product = $this->_productRepository->get($sku);
+                $bynder_multi_img = $_product->getBynderMultiImg();
+                $bynder_doc = $_product->getBynderDocument();
+                $storeId = $this->storeManagerInterface->getStore()->getId();
+                if (!empty($bynder_multi_img)) {
+                    $this->productAction->updateAttributes(
+                        [$product_id],
+                        ['bynder_multi_img' => null],
+                        $storeId
+                    );
+                }
+                if (!empty($bynder_doc)) {
+                    $this->productAction->updateAttributes(
+                        [$product_id],
+                        ['bynder_document' => null],
+                        $storeId
+                    );
+                }
+                if (!$product_id) {
                     $insert_data = [
                         "sku" => $sku,
                         "alias_sku" => null,
-                        "message" => "SKU not match in products",
+                        "message" => "SKU not found in products",
                         "data_type" => "",
                         "sync_source" => "2",
                         "lable" => "0"
                     ];
                     $this->getInsertDataTable($insert_data);
-                    $this->magentoSku->delete($skuData);
+                    // Permanent problem: the SKU does not exist in the catalog, so a retry
+                    // can never succeed. Flag it instead of deleting, so the record is kept
+                    // but no longer picked up by the "pending" filter.
+                    $this->markSkuStatus($skuData, self::SKU_STATUS_FAILED);
+                    $retained_count++;
                     continue;
                 }
-                
-                // Get alias SKUs for this product
-                $aliasSku = $this->datahelper->getSkuByAlias($sku);
-                $is_sku_made_alias = 0;
-                if ($aliasSku === null || empty($aliasSku)) {
-                    // No alias found, use the product SKU itself
-                    $is_sku_made_alias = 1;
-                    $this->processSku($sku, null, $select_attribute, $select_store, $property_id, $collection_value, $collection_slug_val, $skuData);
-                } else {
-                    // Process each alias SKU
-                    foreach ($aliasSku as $a_sku) {
-                        if ($a_sku['alias_sku'] == null || empty($a_sku['alias_sku'])) {
-                            $is_sku_made_alias = 1;
-                            $this->processSku(
-                                $sku, 
-                                null, 
-                                $select_attribute, 
-                                $select_store, 
-                                $property_id, 
-                                $collection_value, 
-                                $collection_slug_val, 
-                                $skuData,
-                                $a_sku['all_alias_identifier'] ?? null
-                            );
-                        } else {
-                            $this->processSku(
-                                $sku, 
-                                $a_sku['alias_sku'], 
-                                $select_attribute, 
-                                $select_store, 
-                                $property_id, 
-                                $collection_value, 
-                                $collection_slug_val, 
-                                $skuData,
-                                $a_sku['all_alias_identifier'] ?? null
-                            );
-                        }
+            } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+                $insert_data = [
+                    "sku" => $sku,
+                    "alias_sku" => null,
+                    "message" => "SKU not match in products",
+                    "data_type" => "",
+                    "sync_source" => "2",
+                    "lable" => "0"
+                ];
+                $this->getInsertDataTable($insert_data);
+                $this->markSkuStatus($skuData, self::SKU_STATUS_FAILED);
+                $retained_count++;
+                continue;
+            }
+
+            // Collect the outcome of every alias attempt for this queue row.
+            $sync_results = [];
+
+            // Get alias SKUs for this product
+            $aliasSku = $this->datahelper->getSkuByAlias($sku);
+            $is_sku_made_alias = 0;
+            if ($aliasSku === null || empty($aliasSku)) {
+                // No alias found, use the product SKU itself
+                $is_sku_made_alias = 1;
+                $sync_results[] = $this->processSku(
+                    $sku,
+                    null,
+                    $select_attribute,
+                    $select_store,
+                    $property_id,
+                    $collection_value,
+                    $collection_slug_val,
+                    null,
+                    $skuData
+                );
+            } else {
+                // Process each alias SKU
+                foreach ($aliasSku as $a_sku) {
+                    if ($a_sku['alias_sku'] == null || empty($a_sku['alias_sku'])) {
+                        $is_sku_made_alias = 1;
+                        $sync_results[] = $this->processSku(
+                            $sku,
+                            null,
+                            $select_attribute,
+                            $select_store,
+                            $property_id,
+                            $collection_value,
+                            $collection_slug_val,
+                            $a_sku['all_alias_identifier'] ?? null,
+                            $skuData
+                        );
+                    } else {
+                        $sync_results[] = $this->processSku(
+                            $sku,
+                            $a_sku['alias_sku'],
+                            $select_attribute,
+                            $select_store,
+                            $property_id,
+                            $collection_value,
+                            $collection_slug_val,
+                            $a_sku['all_alias_identifier'] ?? null,
+                            $skuData
+                        );
                     }
                 }
-                if($is_sku_made_alias == 0){
-                    $all_alias_identifier = array();
-                    $this->processSku(
-                        $sku, 
-                        null,
-                        $select_attribute, 
-                        $select_store, 
-                        $property_id, 
-                        $collection_value, 
-                        $collection_slug_val, 
-                        $skuData,
-                        $all_alias_identifier
-                    );
-                }
+            }
+            if ($is_sku_made_alias == 0) {
+                $all_alias_identifier = [];
+                $sync_results[] = $this->processSku(
+                    $sku,
+                    null,
+                    $select_attribute,
+                    $select_store,
+                    $property_id,
+                    $collection_value,
+                    $collection_slug_val,
+                    $all_alias_identifier,
+                    $skuData
+                );
+            }
+
+            $has_update  = in_array(self::RESULT_UPDATED, $sync_results, true);
+            $has_failure = in_array(self::RESULT_FAILED, $sync_results, true);
+            $has_no_data = in_array(self::RESULT_NO_DATA, $sync_results, true);
+
+            if ($has_update && !$has_failure) {
+                $this->datahelper->updateIsSync($sku, 1);
+                $this->magentoSku->delete($skuData);
+                $processed_count++;
+            } elseif ($has_failure) {
+                // Leave the row as "pending" so the next run tries again.
+                $retained_count++;
+            } elseif ($has_no_data) {
+                // Every attempt came back empty - nothing to write, nothing to retry.
+                $this->markSkuStatus($skuData, self::SKU_STATUS_NO_DATA);
+                $no_data_count++;
+            } else {
+                // No attempt was made at all (no alias rows resolved) - keep it pending.
+                $retained_count++;
             }
         }
-        
+
         $result_data = $result->setData([
             'status' => 1,
-            'message' => 'Data Sync Successfully.Please check Bynder Synchronization Log.!'
+            'message' => sprintf(
+                'Sync finished. %d SKU(s) completed and removed from queue, %d SKU(s) marked "no_data", '
+                . '%d SKU(s) kept as "pending" for retry. Please check Bynder Synchronization Log.',
+                $processed_count,
+                $no_data_count,
+                $retained_count
+            )
         ]);
-        
+
         return $result_data;
+    }
+    
+    /**
+     * Reset every "no_data" / "failed" row back to "pending".
+     *
+     * Called only when the pending queue is empty, so the cron starts a fresh
+     * cycle over the SKUs it previously parked. Uses one bulk UPDATE rather than
+     * loading and saving each model, since this can touch the whole table.
+     *
+     * @return int Number of rows moved back to "pending"
+     */
+    protected function requeueUnprocessedSkus()
+    {
+        try {
+            $connection = $this->resource->getConnection();
+            $table = $this->magentoSku->getMainTable();
+
+            return (int)$connection->update(
+                $table,
+                ['status' => self::SKU_STATUS_PENDING],
+                ['status IN (?)' => [self::SKU_STATUS_NO_DATA, self::SKU_STATUS_FAILED]]
+            );
+        } catch (Exception $e) {
+            $this->getInsertDataTable([
+                "sku" => '',
+                "alias_sku" => null,
+                "message" => 'Unable to requeue no_data/failed SKUs: ' . $e->getMessage(),
+                "data_type" => "",
+                "sync_source" => "2",
+                "lable" => "0"
+            ]);
+            return 0;
+        }
     }
 
     /**
      * Process Single SKU
+     *
+     * Returns one of self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED.
+     * The queue row is never deleted here - only the "no_data" status is applied,
+     * as soon as the API confirms there is nothing to sync. The caller still owns
+     * the delete / retry decision.
      *
      * @param string $sku
      * @param string $aliasSku
@@ -255,13 +376,21 @@ class UpdateAllSku
      * @param string $property_id
      * @param array $collection_value
      * @param array $collection_slug_val
-     * @param object $skuData
      * @param string $all_alias_identifier
+     * @param \Magento\Framework\Model\AbstractModel|null $skuData Queue row model
+     * @return string
      */
-    protected function processSku($sku, $aliasSku, $select_attribute, $select_store, $property_id, $collection_value, $collection_slug_val, $skuData, $all_alias_identifier = null)
-    {
-        $result = $this->resultJsonFactory->create();
-        
+    protected function processSku(
+        $sku,
+        $aliasSku,
+        $select_attribute,
+        $select_store,
+        $property_id,
+        $collection_value,
+        $collection_slug_val,
+        $all_alias_identifier = null,
+        $skuData = null
+    ) {
         try {
             $bd_sku = trim(preg_replace('/[^A-Za-z0-9-]/', '_', $aliasSku ?? $sku));
             $get_data = $this->datahelper->getImageSyncWithProperties(
@@ -269,89 +398,133 @@ class UpdateAllSku
                 $property_id,
                 $collection_value
             );
-            
-            $getIsJson = $this->getIsJSON($get_data);
-            
-            if (!empty($get_data) && $getIsJson) {
-                $respon_array = json_decode($get_data, true);
-                
-                if ($respon_array['status'] == 1) {
-                    $convert_array = json_decode($respon_array['data'], true);
-                    if ($convert_array['status'] == 1) {
-                        try {
-                            $this->getDataItem(
-                                $select_attribute,
-                                $convert_array,
-                                $collection_slug_val,
-                                $sku,
-                                $aliasSku,
-                                $all_alias_identifier
-                            );
-                            $this->datahelper->updateIsSync($sku, 1);
-                            $this->magentoSku->delete($skuData);
-                        } catch (Exception $e) {
-                            $insert_data = [
-                                "sku" => $sku,
-                                "alias_sku" => $aliasSku,
-                                "message" => $e->getMessage(),
-                                "data_type" => "",
-                                "sync_source" => "2",
-                                "lable" => "0"
-                            ];
-                            $this->getInsertDataTable($insert_data);
-                            $this->datahelper->updateIsSync($sku, 1);
-                            $this->magentoSku->delete($skuData);
-                        }
-                    } else {
-                        $insert_data = [
-                            "sku" => $sku,
-                            "alias_sku" => $aliasSku,
-                            "message" => $convert_array['data'],
-                            "data_type" => "",
-                            "sync_source" => "2",
-                            "lable" => "0"
-                        ];
-                        $this->getInsertDataTable($insert_data);
-                        $this->datahelper->updateIsSync($sku, 1);
-                        $this->magentoSku->delete($skuData);
-                    }
-                } else {
-                    $insert_data = [
-                        
-                        "sku" => $sku,
-                        "alias_sku" => null,
-                        "message" => 'Please Select The Metaproperty First.....',
-                        "data_type" => "",
-                        "sync_source" => "2",
-                        "lable" => "0"
-                    ];
-                    $this->getInsertDataTable($insert_data);
-                    $this->datahelper->updateIsSync($sku, 1);
-                    $this->magentoSku->delete($skuData);
-                }
-            } else {
-                $insert_data = [
+
+            if (empty($get_data) || !$this->getIsJSON($get_data)) {
+                $this->getInsertDataTable([
                     "sku" => $sku,
-                    "alias_sku" => null,
+                    "alias_sku" => $aliasSku,
                     "message" => "Something went wrong from API side, Please contact to support team!",
                     "data_type" => "",
                     "sync_source" => "2",
                     "lable" => "0"
-                ];
-                $this->getInsertDataTable($insert_data);
-                $this->magentoSku->delete($skuData);
+                ]);
+                return self::RESULT_FAILED;
             }
+
+            $respon_array = json_decode($get_data, true);
+
+            if (!is_array($respon_array) || ($respon_array['status'] ?? 0) != 1) {
+                $this->getInsertDataTable([
+                    "sku" => $sku,
+                    "alias_sku" => $aliasSku,
+                    "message" => 'Please Select The Metaproperty First.....',
+                    "data_type" => "",
+                    "sync_source" => "2",
+                    "lable" => "0"
+                ]);
+                return self::RESULT_FAILED;
+            }
+
+            $convert_array = json_decode($respon_array['data'] ?? '', true);
+
+            if (!is_array($convert_array) || ($convert_array['status'] ?? 0) != 1) {
+                $this->getInsertDataTable([
+                    "sku" => $sku,
+                    "alias_sku" => $aliasSku,
+                    "message" => is_array($convert_array)
+                        ? (is_string($convert_array['data'] ?? null)
+                            ? $convert_array['data']
+                            : json_encode($convert_array['data'] ?? 'Invalid response payload'))
+                        : 'Invalid response payload',
+                    "data_type" => "",
+                    "sync_source" => "2",
+                    "lable" => "0"
+                ]);
+                return self::RESULT_NO_DATA;
+            }
+
+            // getDataItem writes to the product attributes and reports what happened.
+            $sync_result = $this->getDataItem(
+                $select_attribute,
+                $convert_array,
+                $collection_slug_val,
+                $sku,
+                $aliasSku,
+                $all_alias_identifier
+            );
+
+            // API responded correctly but there is nothing to sync for this
+            // sku / alias - move the queue row off "pending" straight away.
+            if ($sync_result === self::RESULT_NO_DATA && $skuData !== null) {
+                $this->markSkuStatus($skuData, self::SKU_STATUS_NO_DATA);
+            }
+
+            return $sync_result;
         } catch (Exception $e) {
-            $insert_data = [
+            $this->getInsertDataTable([
                 "sku" => $sku,
-                "alias_sku" => null,
+                "alias_sku" => $aliasSku,
                 "message" => $e->getMessage(),
                 "data_type" => "",
                 "sync_source" => "2",
                 "lable" => "0"
-            ];
-            $this->getInsertDataTable($insert_data);
-            $this->magentoSku->delete($skuData);
+            ]);
+            return self::RESULT_FAILED;
+        }
+    }
+
+    /**
+     * Set the status on a queue row so it is no longer picked up by the pending
+     * filter, without losing the record.
+     *
+     * Accepts either the queue row model (preferred, no extra query) or a plain
+     * SKU string, in which case every pending row for that SKU is resolved and
+     * updated. Passing a string used to fatal with
+     * "Call to a member function setData() on string".
+     *
+     * @param \Magento\Framework\Model\AbstractModel|string $skuData
+     * @param string $status
+     * @return bool
+     */
+    protected function markSkuStatus($skuData, $status)
+    {
+        $logSku = '';
+
+        try {
+            // Plain SKU string - resolve the queue row(s) first.
+            if (!is_object($skuData)) {
+                $logSku = (string)$skuData;
+                if ($logSku === '') {
+                    return false;
+                }
+
+                $rows = $this->magentoSkuCollectionFactory->create()
+                    ->addFieldToFilter('sku', $logSku)
+                    ->addFieldToFilter('status', self::SKU_STATUS_PENDING);
+
+                $saved = false;
+                foreach ($rows as $row) {
+                    $row->setData('status', $status);
+                    $this->magentoSku->save($row);
+                    $saved = true;
+                }
+                return $saved;
+            }
+
+            $logSku = (string)$skuData->getData('sku');
+            $skuData->setData('status', $status);
+            $this->magentoSku->save($skuData);
+            return true;
+        } catch (Exception $e) {
+            $this->getInsertDataTable([
+                "sku" => $logSku,
+                "alias_sku" => null,
+                "message" => 'Unable to set queue status to "' . $status . '": ' . $e->getMessage(),
+                "data_type" => "",
+                "sync_source" => "2",
+                "lable" => "0"
+            ]);
+            return false;
         }
     }
 
@@ -402,7 +575,7 @@ class UpdateAllSku
         }
         return ((json_decode($string)) === null) ? false : true;
     }
-    
+
     /**
      * Insert Data Table
      *
@@ -423,7 +596,7 @@ class UpdateAllSku
         $model->setData($data_image_data);
         $model->save();
     }
-    
+
     /**
      * Insert Media Data Table
      *
@@ -476,7 +649,7 @@ class UpdateAllSku
             $this->getInsertDataTable($insert_data);
         }
     }
-    
+
     /**
      * Delete Media Data Table
      *
@@ -509,9 +682,12 @@ class UpdateAllSku
         }
         return $storeIds;
     }
-    
+
     /**
      * Get Data Item
+     *
+     * Returns one of self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED so the
+     * caller knows whether anything really landed in the product attribute.
      *
      * @param string $select_attribute
      * @param array $convert_array
@@ -519,6 +695,7 @@ class UpdateAllSku
      * @param string $current_sku
      * @param string $alias_sku
      * @param string $all_alias_identifier
+     * @return string
      */
     public function getDataItem($select_attribute, $convert_array, $collection_data_slug_val, $current_sku, $alias_sku, $all_alias_identifier)
     {
@@ -526,8 +703,7 @@ class UpdateAllSku
         $data_val_arr = [];
         $doc_data_arr = [];
         $doc_data = [];
-        $result = $this->resultJsonFactory->create();
-        
+
         if ($convert_array['status'] == 1) {
             $media_items = [];
             if (isset($convert_array['data']) && is_array($convert_array['data'])) {
@@ -628,7 +804,7 @@ class UpdateAllSku
                     }
                     continue;
                 }
-                
+
                 if ($select_attribute == $data_value['type']) {
                     $bynder_media_id = $data_value['id'];
                     $image_data = $data_value['thumbnails'];
@@ -636,13 +812,13 @@ class UpdateAllSku
                     $bynder_alt_text = $image_data['img_alt_text'];
                     $sku_slug_name = "property_" . $collection_data_slug_val['sku']['bynder_property_slug'];
                     $data_sku[0] = $current_sku;
-                    
+
                     $images_urls_list = [];
                     $new_magento_role_list = [];
                     $new_bynder_alt_text = [];
                     $new_bynder_mediaid_text = [];
                     $new_image_role = [];
-                    
+
                     if (count($bynder_image_role) > 0) {
                         foreach ($bynder_image_role as $m_bynder_role) {
                             if (!empty($m_bynder_role)) {
@@ -712,7 +888,7 @@ class UpdateAllSku
                     }
                     $new_bynder_alt_text = array_unique($new_bynder_alt_text);
                     $new_bynder_mediaid_text = array_unique($new_bynder_mediaid_text);
-                    
+
                     if ($data_value['type'] == "image") {
                         $image_link = "";
                         if (!empty($data_value['derivatives']) && is_array($data_value['derivatives'])) {
@@ -797,13 +973,13 @@ class UpdateAllSku
                     $bynder_alt_text = $image_data['img_alt_text'];
                     $sku_slug_name = "property_" . $collection_data_slug_val['sku']['bynder_property_slug'];
                     $data_sku[0] = $current_sku;
-                    
+
                     $images_urls_list = [];
                     $new_magento_role_list = [];
                     $new_bynder_alt_text = [];
                     $new_bynder_mediaid_text = [];
                     $new_image_role = [];
-                    
+
                     if (count($bynder_image_role) > 0) {
                         foreach ($bynder_image_role as $m_bynder_role) {
                             if (!empty($m_bynder_role)) {
@@ -873,7 +1049,7 @@ class UpdateAllSku
                     }
                     $new_bynder_mediaid_text = array_unique($new_bynder_mediaid_text);
                     $new_bynder_alt_text = array_unique($new_bynder_alt_text);
-                    
+
                     if ($data_value['type'] == "image") {
                         $image_link = "";
                         if (!empty($data_value['derivatives']) && is_array($data_value['derivatives'])) {
@@ -952,34 +1128,69 @@ class UpdateAllSku
                 }
             }
         }
+
+        // Nothing usable came back for this SKU - do not report it as updated,
+        // so the queue row is preserved.
+        if (count($doc_data_arr) == 0 && count($data_arr) == 0) {
+            $this->getInsertDataTable([
+                "sku" => $current_sku,
+                "alias_sku" => $alias_sku,
+                "message" => 'No Data Found...',
+                "data_type" => "",
+                "sync_source" => "2",
+                "lable" => "0"
+            ]);
+            return self::RESULT_NO_DATA;
+        }
+
+        $image_write = null;
+        $doc_write = null;
+
         if (count($data_arr) > 0) {
-            $this->getProcessItem($data_arr, $data_val_arr);
+            $image_write = $this->getProcessItem($data_arr, $data_val_arr);
         }
         if (count($doc_data_arr) > 0) {
-            $this->getProcessItemDoc($doc_data_arr, $doc_data);
-        } 
-        if (count($doc_data_arr) == 0 && count($data_arr) == 0) {
-            $result_data = $result->setData(['status' => 0, 'message' => 'No Data Found...']);
-            return $result_data;
+            $doc_write = $this->getProcessItemDoc($doc_data_arr, $doc_data);
         }
+
+        // Any failed write means the SKU must stay "pending" for a retry.
+        if ($image_write === self::RESULT_FAILED || $doc_write === self::RESULT_FAILED) {
+            return self::RESULT_FAILED;
+        }
+
+        // Something reached the attribute -> updated. Otherwise the payload held
+        // no usable media, which is a "no_data" outcome rather than a failure.
+        if ($image_write === self::RESULT_UPDATED || $doc_write === self::RESULT_UPDATED) {
+            return self::RESULT_UPDATED;
+        }
+
+        $this->getInsertDataTable([
+            "sku" => $current_sku,
+            "alias_sku" => $alias_sku,
+            "message" => 'No Data Found...',
+            "data_type" => "",
+            "sync_source" => "2",
+            "lable" => "0"
+        ]);
+
+        return self::RESULT_NO_DATA;
     }
-    
+
     /**
      * Get Process Item
      *
      * @param array $data_arr
      * @param array $data_val_arr
-     * @return $this
+     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED
      */
     public function getProcessItem($data_arr, $data_val_arr)
     {
-        $result = $this->resultJsonFactory->create();
         $image_value_details_role = [];
         $temp_arr = [];
         $byn_is_order = [];
         $alias_sku = [];
         $all_alias_identifier = [];
-        
+
         foreach ($data_arr as $key => $skus) {
             $alias_value = isset($data_val_arr[$key]['alias_sku']) ? $data_val_arr[$key]['alias_sku'] : '';
             $group_key = $skus;
@@ -995,7 +1206,10 @@ class UpdateAllSku
             $alias_sku[$group_key][] = $alias_value;
             $all_alias_identifier[$group_key][] = $data_val_arr[$key]["all_alias_identifier"];
         }
-        
+
+        $any_written = false;
+        $any_failed = false;
+
         foreach ($temp_arr as $group_key => $image_value) {
             $img_json = implode("", $image_value);
             $mg_role = $image_value_details_role[$group_key];
@@ -1008,9 +1222,9 @@ class UpdateAllSku
             if (strpos($group_key, '||') !== false) {
                 [$product_sku_key] = explode('||', $group_key, 2);
             }
-            
+
             $group_media_ids = $byn_md_id_new[$group_key] ?? [];
-            $this->getUpdateImage(
+            $written = $this->getUpdateImage(
                 $img_json,
                 $product_sku_key,
                 $mg_role,
@@ -1020,25 +1234,36 @@ class UpdateAllSku
                 $byd_alias_sku,
                 $byn_all_alias_identifier
             );
+
+            if ($written === self::RESULT_UPDATED) {
+                $any_written = true;
+            } elseif ($written === self::RESULT_FAILED) {
+                $any_failed = true;
+            }
         }
+
+        if ($any_failed) {
+            return self::RESULT_FAILED;
+        }
+
+        return $any_written ? self::RESULT_UPDATED : self::RESULT_NO_DATA;
     }
-    
+
     /**
      * Get Process Item Document
      *
      * @param array $data_arr
      * @param array $data_val_arr
-     * @return $this
+     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED
      */
     public function getProcessItemDoc($data_arr, $data_val_arr)
     {
-        $result = $this->resultJsonFactory->create();
         $image_value_details_role = [];
         $temp_arr = [];
         $byn_is_order = [];
         $alias_sku = [];
         $all_alias_identifier = [];
-        
+
         foreach ($data_arr as $key => $skus) {
             $alias_value = isset($data_val_arr[$key]['alias_sku']) ? $data_val_arr[$key]['alias_sku'] : '';
             $group_key = $skus;
@@ -1054,7 +1279,10 @@ class UpdateAllSku
             $alias_sku[$group_key][] = $alias_value;
             $all_alias_identifier[$group_key][] = $data_val_arr[$key]["all_alias_identifier"];
         }
-        
+
+        $any_written = false;
+        $any_failed = false;
+
         foreach ($temp_arr as $group_key => $image_value) {
             $img_json = implode("", $image_value);
             $mg_role = $image_value_details_role[$group_key];
@@ -1067,9 +1295,9 @@ class UpdateAllSku
             if (strpos($group_key, '||') !== false) {
                 [$product_sku_key] = explode('||', $group_key, 2);
             }
-            
+
             $group_media_ids = $byn_md_id_new[$group_key] ?? [];
-            $this->getUpdateDoc(
+            $written = $this->getUpdateDoc(
                 $img_json,
                 $product_sku_key,
                 $mg_role,
@@ -1079,9 +1307,21 @@ class UpdateAllSku
                 $byd_alias_sku,
                 $byn_all_alias_identifier
             );
+
+            if ($written === self::RESULT_UPDATED) {
+                $any_written = true;
+            } elseif ($written === self::RESULT_FAILED) {
+                $any_failed = true;
+            }
         }
+
+        if ($any_failed) {
+            return self::RESULT_FAILED;
+        }
+
+        return $any_written ? self::RESULT_UPDATED : self::RESULT_NO_DATA;
     }
-    
+
     /**
      * Update Document
      *
@@ -1093,23 +1333,18 @@ class UpdateAllSku
      * @param string $byd_media_is_order
      * @param string $byd_alias_sku
      * @param string $byn_all_alias_identifier
-     * @return $this
+     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED
      */
     public function getUpdateDoc($img_json, $product_sku_key, $mg_img_role_option, $img_alt_text, $bynder_media_ids, $byd_media_is_order, $byd_alias_sku, $byn_all_alias_identifier)
     {
-        $result = $this->resultJsonFactory->create();
-        $image_detail = [];
-        $video_detail = [];
-        $diff_image_detail = [];
-        
         try {
             $storeId = $this->storeManagerInterface->getStore()->getId();
             $_product = $this->_productRepository->get($product_sku_key);
             $product_ids = $_product->getId();
-            
+
             // Get existing bynder_document data from the database
             $doc_values = $this->getExistingAttributeData($_product, 'bynder_document', $storeId);
-            
+
             $bynder_media_id = [];
             if (isset($bynder_media_ids[$product_sku_key]) && is_array($bynder_media_ids[$product_sku_key])) {
                 $bynder_media_id = $bynder_media_ids[$product_sku_key];
@@ -1117,13 +1352,13 @@ class UpdateAllSku
                 $bynder_media_id = $bynder_media_ids;
             }
             $isOrder = explode("\n", $byd_media_is_order);
-            
+
             // Initialize log data array for documents
             $log_documents = [];
-            
+
             // Get alias key
             $alias_key = isset($byd_alias_sku[0]) ? $byd_alias_sku[0] : $product_sku_key;
-            
+
             if (empty($doc_values)) {
                 $new_doc_array = explode("\n", $img_json);
                 $doc_detail = [];
@@ -1133,7 +1368,7 @@ class UpdateAllSku
                     $media_doc_explode = explode("/", $item_url[0]);
                     $is_order = isset($isOrder[$vv]) ? $isOrder[$vv] : "";
                     $alias_identifier = isset($byn_all_alias_identifier[$vv]) ? $byn_all_alias_identifier[$vv] : (isset($byn_all_alias_identifier[0]) ? $byn_all_alias_identifier[0] : "");
-                    
+
                     if(isset($doc_name[1]) && isset($bynder_media_id[$vv])){
                         $doc_detail[] = [
                             "item_url" => $item_url[0],
@@ -1143,18 +1378,24 @@ class UpdateAllSku
                             "is_order" => $is_order,
                             "all_alias_identifier" => $alias_identifier
                         ];
-                        
+
                         // Collect log data for documents
                         $log_documents[] = $item_url[0];
                     }
                 }
-                
+
                 $docData = [];
                 if (!empty($doc_detail)) {
                     $docData[$product_sku_key] = $doc_detail;
                 }
+
+                // Nothing valid to persist - not an error, just nothing to sync.
+                if (empty($docData)) {
+                    return self::RESULT_NO_DATA;
+                }
+
                 $new_value_array = json_encode($docData, true);
-                
+
                 $this->productAction->updateAttributes(
                     [$product_ids],
                     ['bynder_document' => $new_value_array],
@@ -1166,7 +1407,7 @@ class UpdateAllSku
                     $skuExistingItems = isset($item_old_value[$product_sku_key]) ? $item_old_value[$product_sku_key] : [];
                     $all_item_url = [];
                     $b_id = [];
-                    
+
                     if (count($skuExistingItems) > 0) {
                         foreach ($skuExistingItems as $doc) {
                             if ($doc['item_type'] == 'DOCUMENT') {
@@ -1176,7 +1417,7 @@ class UpdateAllSku
                         }
                     }
                 }
-                
+
                 $new_doc_array = explode("\n", $img_json);
                 $doc_detail = [];
                 foreach ($new_doc_array as $vv => $doc_value) {
@@ -1186,7 +1427,7 @@ class UpdateAllSku
                         $media_doc_explode = explode("/", $item_url[0]);
                         $is_order = isset($isOrder[$vv]) ? $isOrder[$vv] : "";
                         $alias_identifier = isset($byn_all_alias_identifier[$vv]) ? $byn_all_alias_identifier[$vv] : (isset($byn_all_alias_identifier[0]) ? $byn_all_alias_identifier[0] : "");
-                        
+
                         if(isset($doc_name[1]) && isset($bynder_media_id[$vv])){
                             $doc_detail[] = [
                                 "item_url" => $item_url[0],
@@ -1196,13 +1437,17 @@ class UpdateAllSku
                                 "is_order" => $is_order,
                                 "all_alias_identifier" => $alias_identifier
                             ];
-                            
+
                             // Collect log data for documents
                             $log_documents[] = $item_url[0];
                         }
                     }
                 }
-                
+
+                if (empty($doc_detail)) {
+                    return self::RESULT_NO_DATA;
+                }
+
                 $existingGroupItems = isset($doc_values[$product_sku_key]) && is_array($doc_values[$product_sku_key])
                     ? $doc_values[$product_sku_key]
                     : [];
@@ -1227,15 +1472,17 @@ class UpdateAllSku
                 } else {
                     unset($doc_values[$product_sku_key]);
                 }
-                
+
                 $new_value_array = json_encode($doc_values, true);
                 $this->productAction->updateAttributes(
                     [$product_ids],
                     ['bynder_document' => $new_value_array],
                     $storeId
                 );
+
+                $this->setAttributeDataCache($_product, 'bynder_document', $doc_values);
             }
-            
+
             // Insert log for documents (data_type = 3)
             if (!empty($log_documents)) {
                 $log_value_array = json_encode($log_documents, true);
@@ -1249,12 +1496,23 @@ class UpdateAllSku
                 ];
                 $this->getInsertDataTable($insert_data);
             }
-            
+
+            return self::RESULT_UPDATED;
         } catch (\Exception $e) {
-            return $result->setData(['message' => $e->getMessage()]);
+            // Log the failure and tell the caller nothing was written, so the
+            // queue row survives for the next run.
+            $this->getInsertDataTable([
+                "sku" => $product_sku_key,
+                "alias_sku" => isset($byd_alias_sku[0]) ? $byd_alias_sku[0] : null,
+                "message" => 'Document attribute update failed: ' . $e->getMessage(),
+                "data_type" => "",
+                "sync_source" => "2",
+                "lable" => "0"
+            ]);
+            return self::RESULT_FAILED;
         }
     }
-    
+
     /**
      * Update Image
      *
@@ -1266,11 +1524,10 @@ class UpdateAllSku
      * @param string $byd_media_is_order
      * @param string $byd_alias_sku
      * @param string $byn_all_alias_identifier
-     * @return $this
+     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED
      */
     public function getUpdateImage($img_json, $product_sku_key, $mg_img_role_option, $img_alt_text, $bynder_media_ids, $byd_media_is_order, $byd_alias_sku, $byn_all_alias_identifier)
     {
-        $result = $this->resultJsonFactory->create();
         $image_detail = [];
         $video_detail = [];
         $diff_image_detail = [];
@@ -1279,7 +1536,7 @@ class UpdateAllSku
             $storeId = $this->storeManagerInterface->getStore()->getId();
             $_product = $this->_productRepository->get($product_sku_key);
             $product_ids = $_product->getId();
-            
+
             // Get existing bynder_multi_img data from the database
             $image_value = $this->getExistingAttributeData($_product, 'bynder_multi_img', $storeId);
             $doc_value = $_product->getBynderDocument();
@@ -1291,61 +1548,59 @@ class UpdateAllSku
             }
             $alias_key = isset($byd_alias_sku[0]) ? $byd_alias_sku[0] : $product_sku_key;
             $isOrder = explode("\n", $byd_media_is_order);
-            
-            if (!empty($image_value) || empty($image_value)) {
-                $new_image_array = explode("\n", $img_json);
-                $new_alttext_array = explode("\n", $img_alt_text);
-                $new_magento_role_option_array = $mg_img_role_option;
-                
-                $existing_items = [];
-                if (isset($image_value[$alias_key]) && is_array($image_value[$alias_key])) {
-                    $existing_items = $image_value[$alias_key];
-                } elseif (isset($image_value[$product_sku_key]) && is_array($image_value[$product_sku_key])) {
-                    $existing_items = $image_value[$product_sku_key];
-                }
-                
-                foreach ($new_image_array as $vv => $new_image_value) {
-                    if (trim($new_image_value) != "" && $new_image_value != "no image") {
-                        $item_url = explode("?", $new_image_value);
-                        $media_image_explode = explode("/", $item_url[0]);
-                        $img_altText_val = "";
-                        if (isset($new_alttext_array[$vv])) {
-                            if ($new_alttext_array[$vv] != "###" && strlen(trim($new_alttext_array[$vv])) > 0) {
-                                $img_altText_val = $new_alttext_array[$vv];
-                            }
+
+            $new_image_array = explode("\n", $img_json);
+            $new_alttext_array = explode("\n", $img_alt_text);
+            $new_magento_role_option_array = $mg_img_role_option;
+
+            $existing_items = [];
+            if (isset($image_value[$alias_key]) && is_array($image_value[$alias_key])) {
+                $existing_items = $image_value[$alias_key];
+            } elseif (isset($image_value[$product_sku_key]) && is_array($image_value[$product_sku_key])) {
+                $existing_items = $image_value[$product_sku_key];
+            }
+
+            foreach ($new_image_array as $vv => $new_image_value) {
+                if (trim($new_image_value) != "" && $new_image_value != "no image") {
+                    $item_url = explode("?", $new_image_value);
+                    $media_image_explode = explode("/", $item_url[0]);
+                    $img_altText_val = "";
+                    if (isset($new_alttext_array[$vv])) {
+                        if ($new_alttext_array[$vv] != "###" && strlen(trim($new_alttext_array[$vv])) > 0) {
+                            $img_altText_val = $new_alttext_array[$vv];
                         }
-                        $curt_img_role = [];
-                        if ($new_magento_role_option_array[$vv] != "###") {
-                            $curt_img_role = $new_magento_role_option_array[$vv];
-                        }
-                        $find_video = strpos($new_image_value, "@@");
-                        $is_order = isset($isOrder[$vv]) ? $isOrder[$vv] : "";
-                        $alias_identifier = isset($byn_all_alias_identifier[$vv]) ? $byn_all_alias_identifier[$vv] : (isset($byn_all_alias_identifier[0]) ? $byn_all_alias_identifier[0] : "");
-                        
-                        if (!$find_video) {
-                            $image_detail[] = [
-                                "item_url" => $new_image_value,
-                                "alt_text" => $img_altText_val,
-                                "image_role" => $curt_img_role,
-                                "item_type" => 'IMAGE',
-                                "thum_url" => $item_url[0],
-                                "bynder_md_id" => $bynder_media_id[$vv],
-                                "is_import" => 0,
-                                "is_order" => $is_order,
-                                "all_alias_identifier" => $alias_identifier
-                            ];
-                            $log_data[] = $new_image_value;
-                            
-                            $total_new_values = count($image_detail);
-                            if ($total_new_values > 1) {
-                                foreach ($image_detail as $nn => $n_img) {
-                                    if ($n_img['item_type'] == "IMAGE" && $nn != ($total_new_values - 1)) {
-                                        if ($new_magento_role_option_array[$vv] != "###") {
-                                            $new_mg_role_array = (array)$new_magento_role_option_array[$vv];
-                                            if (count($n_img["image_role"]) > 0 && count($new_mg_role_array) > 0) {
-                                                $result_val = array_diff($n_img["image_role"], $new_mg_role_array);
-                                                $image_detail[$nn]["image_role"] = $result_val;
-                                            }
+                    }
+                    $curt_img_role = [];
+                    if (isset($new_magento_role_option_array[$vv]) && $new_magento_role_option_array[$vv] != "###") {
+                        $curt_img_role = $new_magento_role_option_array[$vv];
+                    }
+                    $find_video = strpos($new_image_value, "@@");
+                    $is_order = isset($isOrder[$vv]) ? $isOrder[$vv] : "";
+                    $alias_identifier = isset($byn_all_alias_identifier[$vv]) ? $byn_all_alias_identifier[$vv] : (isset($byn_all_alias_identifier[0]) ? $byn_all_alias_identifier[0] : "");
+
+                    if (!$find_video) {
+                        $image_detail[] = [
+                            "item_url" => $new_image_value,
+                            "alt_text" => $img_altText_val,
+                            "image_role" => $curt_img_role,
+                            "item_type" => 'IMAGE',
+                            "thum_url" => $item_url[0],
+                            "bynder_md_id" => $bynder_media_id[$vv] ?? '',
+                            "is_import" => 0,
+                            "is_order" => $is_order,
+                            "all_alias_identifier" => $alias_identifier
+                        ];
+                        $log_data[] = $new_image_value;
+
+                        $total_new_values = count($image_detail);
+                        if ($total_new_values > 1) {
+                            foreach ($image_detail as $nn => $n_img) {
+                                if ($n_img['item_type'] == "IMAGE" && $nn != ($total_new_values - 1)) {
+                                    if (isset($new_magento_role_option_array[$vv]) && $new_magento_role_option_array[$vv] != "###") {
+                                        $new_mg_role_array = (array)$new_magento_role_option_array[$vv];
+                                        if (count($n_img["image_role"]) > 0 && count($new_mg_role_array) > 0) {
+                                            $result_val = array_diff($n_img["image_role"], $new_mg_role_array);
+                                            $image_detail[$nn]["image_role"] = $result_val;
                                         }
                                     }
                                 }
@@ -1353,87 +1608,104 @@ class UpdateAllSku
                         }
                     }
                 }
-                // Process roles
-                $replacementRoles = ["Base", "Small", "Swatch", "Thumbnail"];
-                $flags = true;
-                foreach ($image_detail as &$item) {
-                    if (in_array('Base', $item['image_role'])) {
-                        $flags = false;
-                    }
-                }
-                foreach ($image_detail as &$item) {
-                    if ($flags && isset($item['image_role']) && is_array($item['image_role'])) {
-                        $containsPlaceholder = in_array("###\n", $item['image_role']);
-                        $hasAllReplacementRoles = empty(array_diff($replacementRoles, $item['image_role']));
-                        if ($hasAllReplacementRoles) { break; }
-                        if ($containsPlaceholder && !$hasAllReplacementRoles) {
-                            $item['image_role'] = $replacementRoles;
-                        }
-                    }
-                }
-                foreach ($image_detail as &$items) {
-                    if (isset($items['image_role']) && is_array($items['image_role'])) {
-                        $items['image_role'] = array_values(array_filter(
-                            $items['image_role'],
-                            fn($role) => trim($role) !== '###'
-                        ));
-                    }
-                }
-                unset($items);
+            }
 
-                $merged_items = $existing_items;
-                foreach ($image_detail as $new_item) {
-                    $item_url = $new_item['item_url'] ?? '';
-                    $is_duplicate = false;
-                    foreach ($merged_items as $existing_item) {
-                        if (($existing_item['item_url'] ?? '') === $item_url) {
-                            $is_duplicate = true;
-                            break;
-                        }
-                    }
-                    if (!$is_duplicate && $item_url !== '') {
-                        $merged_items[] = $new_item;
-                    }
-                }
+            // Nothing usable to persist - not an error, just nothing to sync.
+            if (empty($image_detail)) {
+                return self::RESULT_NO_DATA;
+            }
 
-                if (!empty($merged_items)) {
-                    $image_value[$alias_key] = $merged_items;
-                } else {
-                    unset($image_value[$alias_key]);
-                }
-                
-                $new_value_array = json_encode($image_value, true);
-                $log_value_array = json_encode($log_data, true);
-                
-                $this->setAttributeDataCache($_product, 'bynder_multi_img', $image_value);
-                
-                $updated_values = [
-                    'bynder_multi_img' => $new_value_array,
-                    'bynder_isMain' => $this->determineMediaType($image_value),
-                    'use_bynder_cdn' => 1
-                ];
-                $this->productAction->updateAttributes(
-                    [$product_ids],
-                    $updated_values,
-                    $storeId
-                );
-                
-                // Insert log for images
-                if (!empty($log_data)) {
-                    $insert_data = [
-                        "sku" => $product_sku_key,
-                        "alias_sku" => $alias_key,
-                        "message" => $log_value_array,
-                        "data_type" => "1",
-                        "sync_source" => "2",
-                        "lable" => 1
-                    ];
-                    $this->getInsertDataTable($insert_data);
+            // Process roles
+            $replacementRoles = ["Base", "Small", "Swatch", "Thumbnail"];
+            $flags = true;
+            foreach ($image_detail as &$item) {
+                if (in_array('Base', $item['image_role'])) {
+                    $flags = false;
                 }
             }
-            
+            foreach ($image_detail as &$item) {
+                if ($flags && isset($item['image_role']) && is_array($item['image_role'])) {
+                    $containsPlaceholder = in_array("###\n", $item['image_role']);
+                    $hasAllReplacementRoles = empty(array_diff($replacementRoles, $item['image_role']));
+                    if ($hasAllReplacementRoles) { break; }
+                    if ($containsPlaceholder && !$hasAllReplacementRoles) {
+                        $item['image_role'] = $replacementRoles;
+                    }
+                }
+            }
+            unset($item);
+            foreach ($image_detail as &$items) {
+                if (isset($items['image_role']) && is_array($items['image_role'])) {
+                    $items['image_role'] = array_values(array_filter(
+                        $items['image_role'],
+                        fn($role) => trim($role) !== '###'
+                    ));
+                }
+            }
+            unset($items);
+
+            $merged_items = $existing_items;
+            foreach ($image_detail as $new_item) {
+                $item_url = $new_item['item_url'] ?? '';
+                $is_duplicate = false;
+                foreach ($merged_items as $existing_item) {
+                    if (($existing_item['item_url'] ?? '') === $item_url) {
+                        $is_duplicate = true;
+                        break;
+                    }
+                }
+                if (!$is_duplicate && $item_url !== '') {
+                    $merged_items[] = $new_item;
+                }
+            }
+
+            if (!empty($merged_items)) {
+                $image_value[$alias_key] = $merged_items;
+            } else {
+                unset($image_value[$alias_key]);
+            }
+
+            $new_value_array = json_encode($image_value, true);
+            $log_value_array = json_encode($log_data, true);
+
+            $updated_values = [
+                'bynder_multi_img' => $new_value_array,
+                'bynder_isMain' => $this->determineMediaType($image_value),
+                'use_bynder_cdn' => 1
+            ];
+            $this->productAction->updateAttributes(
+                [$product_ids],
+                $updated_values,
+                $storeId
+            );
+
+            // Only cache the new value once the write actually went through.
+            $this->setAttributeDataCache($_product, 'bynder_multi_img', $image_value);
+
+            // Insert log for images
+            if (!empty($log_data)) {
+                $insert_data = [
+                    "sku" => $product_sku_key,
+                    "alias_sku" => $alias_key,
+                    "message" => $log_value_array,
+                    "data_type" => "1",
+                    "sync_source" => "2",
+                    "lable" => 1
+                ];
+                $this->getInsertDataTable($insert_data);
+            }
+
+            return self::RESULT_UPDATED;
         } catch (\Exception $e) {
-            return $result->setData(['message' => $e->getMessage()]);
+            $this->getInsertDataTable([
+                "sku" => $product_sku_key,
+                "alias_sku" => isset($byd_alias_sku[0]) ? $byd_alias_sku[0] : null,
+                "message" => 'Image attribute update failed: ' . $e->getMessage(),
+                "data_type" => "",
+                "sync_source" => "2",
+                "lable" => "0"
+            ]);
+            return self::RESULT_FAILED;
         }
     }
 
@@ -1498,11 +1770,11 @@ class UpdateAllSku
     {
         $hasImage = false;
         $hasVideo = false;
-        
+
         if (!is_array($data)) {
             return 0;
         }
-        
+
         foreach ($data as $sku => $items) {
             if (!is_array($items)) {
                 continue;
@@ -1517,7 +1789,7 @@ class UpdateAllSku
                 }
             }
         }
-        
+
         if ($hasImage && $hasVideo) {
             return 1;
         } elseif ($hasImage) {

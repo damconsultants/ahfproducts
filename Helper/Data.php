@@ -78,6 +78,8 @@ class Data extends AbstractHelper
     public const UPDATE_ALIAS_SKU_CRON = 'cronimageconfig/update_all_aliassku/update_alias_enable';
     public const FETCH_PRODUCT_SKU_LIMIT = 'cronimageconfig/configurable_cron/fetch_product_sku_limt';
     public const AUTO_PRODUCT_SKU_LIMIT = 'cronimageconfig/auto_add_bynder/auto_product_sku_limt';
+    public const UPDATE_SKU_LIMIT = 'cronimageconfig/update_all_sku/update_all_sku_limt';
+    public const UPDATE_ALIAS_SKU_LIMIT = 'cronimageconfig/update_all_aliassku/update_all_aliassku_limt';
     public const PRODUCT_SKU_LIMIT = 'cronimageconfig/set_limit_product_sku/product_sku_limt';
     public const PLACEHOLDER_IMAGE = 'byndeimageconfig/bynder_image/placeholder_base';
     public const API_CALLED = 'https://developer.thedamconsultants.com/';
@@ -241,6 +243,24 @@ class Data extends AbstractHelper
     public function getFetchProductSkuLimitConfig()
     {
         return (string) $this->getStoreConfig(self::FETCH_PRODUCT_SKU_LIMIT);
+    }
+    /**
+     * Get Product Sku Limit Config
+     *
+     * @return $this
+     */
+    public function getUpdateSkuLimitConfig()
+    {
+        return (string) $this->getStoreConfig(self::UPDATE_SKU_LIMIT);
+    }
+    /**
+     * Get Product Sku Limit Config
+     *
+     * @return $this
+     */
+    public function getUpdateAliasSkuLimitConfig()
+    {
+        return (string) $this->getStoreConfig(self::UPDATE_ALIAS_SKU_LIMIT);
     }
     /**
      * Get Bynder Dom
