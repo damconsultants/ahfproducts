@@ -25,6 +25,7 @@ class UpdateAllSku
     const RESULT_UPDATED = 'updated';   // data was written into the product attribute
     const RESULT_NO_DATA = 'no_data';   // API answered, but nothing to write
     const RESULT_FAILED  = 'failed';    // API error, bad payload or attribute write failed
+    const RESULT_API_ERROR = 'api_error'; 
     const FREQUENCY_MINUTES = 'E';
     const DEFAULT_SKU_LIMIT = 50;
     const DEFAULT_MIN_SKU_LIMIT = 10;
@@ -145,7 +146,7 @@ class UpdateAllSku
         if (!$enable) {
             return false;
         }
-
+       
         $frequency = $this->datahelper->getUpdateSkuFrequency();
         $is_minute_schedule = ($frequency === self::FREQUENCY_MINUTES);
 
@@ -212,8 +213,9 @@ class UpdateAllSku
             if ($skucollection->getSize() === 0) {
                 break;
             }
-
+            
             foreach ($skucollection as $skuData) {
+                
                 $row_id = (int)$skuData->getData(self::QUEUE_ID_FIELD);
                 if ($row_id > $last_id) {
                     $last_id = $row_id;
@@ -223,7 +225,7 @@ class UpdateAllSku
                 if ($sku == "") {
                     continue;
                 }
-
+               
                 $select_attribute = $skuData['select_attribute'];
                 $select_store = $skuData['select_store'];
 
@@ -242,6 +244,7 @@ class UpdateAllSku
                         // Permanent problem: the SKU does not exist in the catalog, so a
                         // retry can never succeed. Flag it instead of deleting.
                         $this->markSkuStatus($skuData, self::SKU_STATUS_FAILED);
+                        $this->magentoSku->delete($skuData);
                         $retained_count++;
                         continue;
                     }
@@ -255,6 +258,7 @@ class UpdateAllSku
                         "lable" => "0"
                     ]);
                     $this->markSkuStatus($skuData, self::SKU_STATUS_FAILED);
+                    $this->magentoSku->delete($skuData);
                     $retained_count++;
                     continue;
                 }
@@ -321,23 +325,27 @@ class UpdateAllSku
                         $skuData
                     );
                 }
-
-                $has_update  = in_array(self::RESULT_UPDATED, $sync_results, true);
-                $has_failure = in_array(self::RESULT_FAILED, $sync_results, true);
-                $has_no_data = in_array(self::RESULT_NO_DATA, $sync_results, true);
-
-                if ($has_update && !$has_failure) {
+                
+                $has_api_error = in_array(self::RESULT_API_ERROR, $sync_results, true);
+                $has_update    = in_array(self::RESULT_UPDATED,   $sync_results, true);
+                $has_failure   = in_array(self::RESULT_FAILED,    $sync_results, true);
+                $has_no_data   = in_array(self::RESULT_NO_DATA,   $sync_results, true);
+                
+                if ($has_api_error) {
+                    // API side problem — keep the row "pending" so the next run retries it.
+                    $retained_count++;
+                } elseif ($has_update && !$has_failure) {
                     $this->datahelper->updateIsSync($sku, 1);
                     $this->magentoSku->delete($skuData);
                     $processed_count++;
                 } elseif ($has_failure) {
-                    // Leave the row as "pending" so the next run tries again.
-                    $retained_count++;
-                } elseif ($has_no_data) {
-                    $this->markSkuStatus($skuData, self::SKU_STATUS_NO_DATA);
-                    $no_data_count++;
+                    // Write/attribute failure with a valid API answer — nothing to retry.
+                    $this->magentoSku->delete($skuData);
+                    $failed_count++;
                 } else {
-                    $retained_count++;
+                    // no_data, or no alias produced any result
+                    $this->magentoSku->delete($skuData);
+                    $no_data_count++;
                 }
             }
 
@@ -446,7 +454,7 @@ class UpdateAllSku
                     "sync_source" => "2",
                     "lable" => "0"
                 ]);
-                return self::RESULT_FAILED;
+                return self::RESULT_API_ERROR;
             }
 
             $respon_array = json_decode($get_data, true);
@@ -460,7 +468,7 @@ class UpdateAllSku
                     "sync_source" => "2",
                     "lable" => "0"
                 ]);
-                return self::RESULT_FAILED;
+                return self::RESULT_API_ERROR;
             }
 
             $convert_array = json_decode($respon_array['data'] ?? '', true);
@@ -509,12 +517,6 @@ class UpdateAllSku
                 $all_alias_identifier
             );
 
-            // API responded correctly but there is nothing to sync for this
-            // sku / alias - move the queue row off "pending" straight away.
-            if ($sync_result === self::RESULT_NO_DATA && $skuData !== null) {
-                $this->markSkuStatus($skuData, self::SKU_STATUS_NO_DATA);
-            }
-
             return $sync_result;
         } catch (Exception $e) {
             $this->getInsertDataTable([
@@ -525,7 +527,7 @@ class UpdateAllSku
                 "sync_source" => "2",
                 "lable" => "0"
             ]);
-            return self::RESULT_FAILED;
+            return self::RESULT_API_ERROR;
         }
     }
 

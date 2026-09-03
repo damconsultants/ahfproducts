@@ -82,7 +82,7 @@ class Data extends AbstractHelper
     public const UPDATE_ALIAS_SKU_LIMIT = 'cronimageconfig/update_all_aliassku/update_all_aliassku_limt';
     public const PRODUCT_SKU_LIMIT = 'cronimageconfig/set_limit_product_sku/product_sku_limt';
     public const PLACEHOLDER_IMAGE = 'byndeimageconfig/bynder_image/placeholder_base';
-    public const API_CALLED = 'https://developer.thedamconsultants.com/';
+    public const API_CALLED = 'https://magento-thedamconsultants.in/';
     public const IFRAME_URL = 'https://trello.thedamconsultants.com/bynder-registration';
     public const XML_PATH_UPDATE_SKU_FREQUENCY = 'cronimageconfig/update_all_sku/update_sku_frequency';
     public const XML_PATH_ENTER_MIN = 'cronimageconfig/update_all_sku/your_min_update_sku_frequency';
@@ -116,7 +116,7 @@ class Data extends AbstractHelper
         \Magento\ConfigurableProduct\Block\Adminhtml\Product\Steps\Bulk $bulk,
         AliasCollectionFactory $aliasCollectionFactory,
         AliasRepositoryInterface $aliasRepository,
-        AliasResource $resource,
+        AliasResource $resource
     ) {
         $this->cookieMetadataFactory = $cookieMetadataFactory;
         $this->cookieManager = $cookieManager;

@@ -24,7 +24,12 @@
     <type name="Magento\RequisitionList\Block\Requisition\View\Item">
         <plugin name="damconsultants_requisition_image" type="DamConsultants\Ahfproducts\Plugin\RequisitionList\ItemPlugin"/>
     </type>
-    <type name="Magento\Framework\App\Http\Context">
+    <!-- <type name="Magento\Framework\App\Http\Context">
         <plugin name="ahf_customer_context_vary" type="DamConsultants\Ahfproducts\Plugin\App\Http\ContextPlugin" />
+    </type> -->
+    <type name="Magento\Framework\App\ActionInterface">
+        <plugin name="ahf_customer_context"
+                type="DamConsultants\Ahfproducts\Plugin\App\Action\CustomerContextPlugin"
+                sortOrder="30"/>
     </type>
 </config>
