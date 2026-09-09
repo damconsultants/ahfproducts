@@ -8,6 +8,7 @@ use DamConsultants\Ahfproducts\Model\ResourceModel\Collection\BynderMediaTableCo
 use DamConsultants\Ahfproducts\Model\ResourceModel\Collection\MagentoSkuCollectionFactory;
 use DamConsultants\Ahfproducts\Model\ResourceModel\MagentoSku;
 use Magento\Framework\App\ResourceConnection;
+use Magento\Framework\Lock\LockManagerInterface;
 use Exception;
 
 class UpdateAllSku
@@ -25,12 +26,18 @@ class UpdateAllSku
     const RESULT_UPDATED = 'updated';   // data was written into the product attribute
     const RESULT_NO_DATA = 'no_data';   // API answered, but nothing to write
     const RESULT_FAILED  = 'failed';    // API error, bad payload or attribute write failed
-    const RESULT_API_ERROR = 'api_error'; 
+    const RESULT_API_ERROR = 'api_error';
+    const RESULT_RETRY   = 'retry';
+
     const FREQUENCY_MINUTES = 'E';
-    const DEFAULT_SKU_LIMIT = 50;
+    const DEFAULT_SKU_LIMIT = 200;
     const DEFAULT_MIN_SKU_LIMIT = 10;
     const BATCH_SIZE = 15;          // rows held in memory per batch on D/W/M
     const QUEUE_ID_FIELD = 'id';     // primary key of the magento_sku queue table
+    const LOCK_NAME = 'damconsultants_ahfproducts_update_all_sku';
+    const MAX_RUN_SECONDS = 240;
+    const MAX_DB_RETRIES = 3;
+    const LOCK_WAIT_TIMEOUT = 15;
 
     /**
      * @var \Magento\Framework\View\Result\PageFactory
@@ -79,6 +86,10 @@ class UpdateAllSku
     protected $resource;
     protected $magentoSkuCollectionFactory;
     protected $magentoSku;
+    /**
+     * @var LockManagerInterface
+     */
+    protected $lockManager;
     private array $attributeDataCache = [];
 
     /**
@@ -88,11 +99,15 @@ class UpdateAllSku
      * @param \DamConsultants\Ahfproducts\Model\BynderConfigSyncDataFactory $byndersycData
      * @param \DamConsultants\Ahfproducts\Model\BynderMediaTableFactory $bynderMediaTable
      * @param BynderMediaTableCollectionFactory $bynderMediaTableCollectionFactory
+     * @param MagentoSkuCollectionFactory $magentoSkuCollectionFactory
+     * @param MagentoSku $magentoSku
      * @param \Magento\Catalog\Model\Product $product
      * @param \Magento\Catalog\Model\ProductRepository $productRepository
      * @param MetaPropertyCollectionFactory $metaPropertyCollectionFactory
      * @param \DamConsultants\Ahfproducts\Helper\Data $DataHelper
      * @param \Magento\Framework\Controller\Result\JsonFactory $jsonFactory
+     * @param ResourceConnection $resource
+     * @param LockManagerInterface $lockManager
      */
     public function __construct(
         \Magento\Catalog\Model\Product\Action $action,
@@ -107,7 +122,8 @@ class UpdateAllSku
         MetaPropertyCollectionFactory $metaPropertyCollectionFactory,
         \DamConsultants\Ahfproducts\Helper\Data $DataHelper,
         \Magento\Framework\Controller\Result\JsonFactory $jsonFactory,
-        ResourceConnection $resource
+        ResourceConnection $resource,
+        LockManagerInterface $lockManager
     ) {
         $this->resultJsonFactory = $jsonFactory;
         $this->productAction = $action;
@@ -122,47 +138,55 @@ class UpdateAllSku
         $this->_productRepository = $productRepository;
         $this->product = $product;
         $this->resource = $resource;
+        $this->lockManager = $lockManager;
     }
 
     /**
      * Execute
      *
-     * @return boolean
-     */
-        /**
-     * Execute
-     *
-     * Every Minute (E)  -> one batch per run, size = configured SKU limit.
-     * Daily/Weekly/Monthly -> loops through the whole pending queue in batches
-     *                         until nothing is left, so a single run finishes
-     *                         every SKU instead of stopping after one page.
-     *
-     * @return boolean
+     * @return boolean|\Magento\Framework\Controller\Result\Json
      */
     public function execute()
     {
         $enable = $this->datahelper->getUpdateSkuCronEnable();
-        $enterMin = $this->datahelper->getUpdateSkuMin();
         if (!$enable) {
             return false;
         }
-       
+
+        // timeout 0 = do not queue behind a running instance, just skip this tick.
+        if (!$this->lockManager->lock(self::LOCK_NAME, 0)) {
+            return $this->resultJsonFactory->create()->setData([
+                'status' => 0,
+                'message' => 'Another UpdateAllSku run is still in progress; skipping this run.'
+            ]);
+        }
+
+        try {
+            return $this->runQueue();
+        } finally {
+            $this->lockManager->unlock(self::LOCK_NAME);
+        }
+    }
+
+    /**
+     * Drain the pending queue
+     *
+     * @return \Magento\Framework\Controller\Result\Json
+     */
+    protected function runQueue()
+    {
+        $enterMin = $this->datahelper->getUpdateSkuMin();
         $frequency = $this->datahelper->getUpdateSkuFrequency();
         $is_minute_schedule = ($frequency === self::FREQUENCY_MINUTES);
 
         if ($is_minute_schedule) {
             $batch_size = (int)$this->datahelper->getUpdateSkuLimitConfig();
-            if ($batch_size <= 0 || $batch_size > 50) {
-                if($enterMin > 9){
-                    $batch_size = self::DEFAULT_SKU_LIMIT;
-                }else{
-                    $batch_size = self::DEFAULT_MIN_SKU_LIMIT;
-                }
-            }
         } else {
-            // Not a user setting - just how many rows are held in memory at once.
             $batch_size = self::BATCH_SIZE;
         }
+        $this->applyLockWaitTimeout();
+
+        $deadline = time() + self::MAX_RUN_SECONDS;
 
         $result = $this->resultJsonFactory->create();
 
@@ -196,10 +220,8 @@ class UpdateAllSku
         $processed_count = 0;
         $retained_count = 0;
         $no_data_count = 0;
-
-        // Cursor on the primary key. Successful rows are deleted and failed rows
-        // stay "pending", so an OFFSET would skip or re-serve records while the
-        // run is in progress. An ascending id is stable under both.
+        $failed_count = 0;
+        $stopped_early = false;
         $last_id = 0;
 
         while (true) {
@@ -223,9 +245,10 @@ class UpdateAllSku
 
                 $sku = $skuData['sku'];
                 if ($sku == "") {
+                    $this->saveSkuReport($skuData, 'failed', 'SKU is empty');
                     continue;
                 }
-               
+
                 $select_attribute = $skuData['select_attribute'];
                 $select_store = $skuData['select_store'];
 
@@ -241,11 +264,10 @@ class UpdateAllSku
                             "sync_source" => "2",
                             "lable" => "0"
                         ]);
-                        // Permanent problem: the SKU does not exist in the catalog, so a
-                        // retry can never succeed. Flag it instead of deleting.
+                        $this->saveSkuReport($skuData, 'failed', 'SKU not found in products');
                         $this->markSkuStatus($skuData, self::SKU_STATUS_FAILED);
                         $this->magentoSku->delete($skuData);
-                        $retained_count++;
+                        $failed_count++;
                         continue;
                     }
                 } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
@@ -257,9 +279,10 @@ class UpdateAllSku
                         "sync_source" => "2",
                         "lable" => "0"
                     ]);
+                    $this->saveSkuReport($skuData, 'failed', 'SKU not match in products');
                     $this->markSkuStatus($skuData, self::SKU_STATUS_FAILED);
                     $this->magentoSku->delete($skuData);
-                    $retained_count++;
+                    $failed_count++;
                     continue;
                 }
 
@@ -325,25 +348,37 @@ class UpdateAllSku
                         $skuData
                     );
                 }
-                
+
+                $has_retry     = in_array(self::RESULT_RETRY,     $sync_results, true);
                 $has_api_error = in_array(self::RESULT_API_ERROR, $sync_results, true);
                 $has_update    = in_array(self::RESULT_UPDATED,   $sync_results, true);
                 $has_failure   = in_array(self::RESULT_FAILED,    $sync_results, true);
                 $has_no_data   = in_array(self::RESULT_NO_DATA,   $sync_results, true);
-                
-                if ($has_api_error) {
-                    // API side problem — keep the row "pending" so the next run retries it.
+
+                if ($has_retry) {
+                    $this->saveSkuReport(
+                        $skuData,
+                        'pending',
+                        'Database lock contention while writing product attributes; waiting for retry'
+                    );
+                    $retained_count++;
+                } elseif ($has_api_error) {
+                    // API side problem - keep the row "pending" so the next run retries it.
+                    $this->saveSkuReport($skuData, 'pending', 'Bynder API or response error; waiting for retry');
                     $retained_count++;
                 } elseif ($has_update && !$has_failure) {
                     $this->datahelper->updateIsSync($sku, 1);
+                    $this->saveSkuReport($skuData, 'success', 'SKU synchronized successfully');
                     $this->magentoSku->delete($skuData);
                     $processed_count++;
                 } elseif ($has_failure) {
-                    // Write/attribute failure with a valid API answer — nothing to retry.
+                    // Write/attribute failure with a valid API answer - nothing to retry.
+                    $this->saveSkuReport($skuData, 'failed', 'Product attribute synchronization failed');
                     $this->magentoSku->delete($skuData);
                     $failed_count++;
                 } else {
                     // no_data, or no alias produced any result
+                    $this->saveSkuReport($skuData, 'no_data', 'No Bynder data was available for synchronization');
                     $this->magentoSku->delete($skuData);
                     $no_data_count++;
                 }
@@ -357,8 +392,13 @@ class UpdateAllSku
             // Every Minute: one batch per run, the schedule itself paces the work.
             if ($is_minute_schedule) {
                 break;
-            }else{
-                sleep(60);
+            }
+
+            // D/W/M: keep draining, but never run long enough to overlap the next
+            // tick. Whatever is left is still "pending" and will be picked up.
+            if (time() >= $deadline) {
+                $stopped_early = true;
+                break;
             }
         }
 
@@ -366,14 +406,94 @@ class UpdateAllSku
             'status' => 1,
             'message' => sprintf(
                 'Sync finished. %d SKU(s) completed and removed from queue, %d SKU(s) marked "no_data", '
-                . '%d SKU(s) kept as "pending" for retry. Please check Bynder Synchronization Log.',
+                . '%d SKU(s) failed, %d SKU(s) kept as "pending" for retry.%s '
+                . 'Please check Bynder Synchronization Log.',
                 $processed_count,
                 $no_data_count,
-                $retained_count
+                $failed_count,
+                $retained_count,
+                $stopped_early ? ' Run time limit reached; remaining SKUs continue on the next run.' : ''
             )
         ]);
     }
-    
+
+    /**
+     * Shorten the InnoDB lock wait for this connection only.
+     *
+     * With the 50s server default a single contended product blocked the whole
+     * cron for the best part of a minute before throwing 1205. A short wait plus
+     * bounded retries clears transient contention much faster.
+     *
+     * @return void
+     */
+    protected function applyLockWaitTimeout()
+    {
+        try {
+            $this->resource->getConnection()->query(
+                'SET SESSION innodb_lock_wait_timeout = ' . (int)self::LOCK_WAIT_TIMEOUT
+            );
+        } catch (Exception $e) {
+            // Not fatal - the server default simply stays in force.
+            $this->getInsertDataTable([
+                "sku" => '',
+                "alias_sku" => null,
+                "message" => 'Unable to set innodb_lock_wait_timeout: ' . $e->getMessage(),
+                "data_type" => "",
+                "sync_source" => "2",
+                "lable" => "0"
+            ]);
+        }
+    }
+
+    /**
+     * updateAttributes() with exponential backoff on transient InnoDB errors.
+     *
+     * 1205 (lock wait timeout) and 1213 (deadlock) are transient by definition:
+     * the correct response is to wait and try again, not to log an error row and
+     * drop the SKU. Only a non retryable error, or exhausting the attempts, is
+     * allowed to escape to the caller.
+     *
+     * @param array $productIds
+     * @param array $values
+     * @param int $storeId
+     * @return void
+     * @throws \Exception
+     */
+    protected function updateProductAttributes(array $productIds, array $values, $storeId)
+    {
+        $attempt = 0;
+
+        while (true) {
+            try {
+                $this->productAction->updateAttributes($productIds, $values, $storeId);
+                return;
+            } catch (\Exception $e) {
+                $attempt++;
+                if (!$this->isRetryableDbError($e) || $attempt >= self::MAX_DB_RETRIES) {
+                    throw $e;
+                }
+                // 200ms, 400ms, 800ms plus jitter, so two writers that collided
+                // do not immediately collide again on the retry.
+                usleep((int)(200000 * pow(2, $attempt - 1)) + random_int(0, 100000));
+            }
+        }
+    }
+
+    /**
+     * Is this a transient database error worth retrying?
+     *
+     * @param \Throwable $e
+     * @return bool
+     */
+    protected function isRetryableDbError(\Throwable $e)
+    {
+        $message = $e->getMessage();
+
+        return stripos($message, 'Lock wait timeout exceeded') !== false
+            || stripos($message, 'Deadlock found when trying to get lock') !== false
+            || stripos($message, 'try restarting transaction') !== false;
+    }
+
     /**
      * Reset every "no_data" / "failed" row back to "pending".
      *
@@ -408,12 +528,78 @@ class UpdateAllSku
     }
 
     /**
+     * Persist a queue row result before the queue row is removed.
+     */
+    protected function saveSkuReport($skuData, $status, $message)
+    {
+        $connection = $this->resource->getConnection();
+        $table = $this->resource->getTableName('bynder_update_sku_report');
+        $data = [
+            'queue_id' => (int)$skuData->getData(self::QUEUE_ID_FIELD),
+            'token' => (string)$skuData->getData('token'),
+            'sku' => (string)$skuData->getData('sku'),
+            'select_attribute' => (string)$skuData->getData('select_attribute'),
+            'select_store' => (string)$skuData->getData('select_store'),
+            'status' => $status,
+            'message' => $message
+        ];
+
+        $connection->insertOnDuplicate(
+            $table,
+            $data,
+            ['token', 'sku', 'select_attribute', 'select_store', 'status', 'message']
+        );
+
+        $token = (string)$skuData->getData('token');
+        if ($token === '') {
+            return;
+        }
+
+        $counts = $connection->fetchAll(
+            $connection->select()
+                ->from($table, ['status', 'total' => new \Zend_Db_Expr('COUNT(*)')])
+                ->where('token = ?', $token)
+                ->group('status')
+        );
+        $summary = [
+            'success' => 0,
+            'failed' => 0,
+            'no_data' => 0,
+            'pending' => 0
+        ];
+        foreach ($counts as $count) {
+            if (isset($summary[$count['status']])) {
+                $summary[$count['status']] = (int)$count['total'];
+            }
+        }
+
+        $summaryTable = $this->resource->getTableName('bynder_update_sku_token');
+        $totalSku = (int)$connection->fetchOne(
+            $connection->select()->from($summaryTable, ['total_sku'])->where('token = ?', $token)
+        );
+        $isComplete = $totalSku > 0
+            && $summary['pending'] === 0
+            && ($summary['success'] + $summary['failed'] + $summary['no_data']) >= $totalSku;
+
+        $connection->update(
+            $summaryTable,
+            [
+                'success_count' => $summary['success'],
+                'failed_count' => $summary['failed'],
+                'no_data_count' => $summary['no_data'],
+                'pending_count' => $summary['pending'],
+                'status' => $isComplete ? 'complete' : 'pending'
+            ],
+            ['token = ?' => $token]
+        );
+    }
+
+    /**
      * Process Single SKU
      *
-     * Returns one of self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED.
-     * The queue row is never deleted here - only the "no_data" status is applied,
-     * as soon as the API confirms there is nothing to sync. The caller still owns
-     * the delete / retry decision.
+     * Returns one of self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED /
+     * RESULT_RETRY / RESULT_API_ERROR. The queue row is never deleted here - the
+     * caller still owns the delete / retry decision.
      *
      * @param string $sku
      * @param string $aliasSku
@@ -488,25 +674,34 @@ class UpdateAllSku
                 ]);
                 return self::RESULT_NO_DATA;
             }
+
             $product_id = $this->product->getIdBySku($sku);
             $_product = $this->_productRepository->get($sku);
             $bynder_multi_img = $_product->getBynderMultiImg();
             $bynder_doc = $_product->getBynderDocument();
             $storeId = $this->storeManagerInterface->getStore()->getId();
+
+            // One write instead of two. Every updateAttributes() call is its own
+            // transaction against catalog_product_entity, so halving them halves
+            // the window in which another process can collide with this one.
+            $clear_values = [];
             if (!empty($bynder_multi_img)) {
-                $this->productAction->updateAttributes(
-                    [$product_id],
-                    ['bynder_multi_img' => null],
-                    $storeId
-                );
+                $clear_values['bynder_multi_img'] = null;
             }
             if (!empty($bynder_doc)) {
-                $this->productAction->updateAttributes(
-                    [$product_id],
-                    ['bynder_document' => null],
-                    $storeId
-                );
+                $clear_values['bynder_document'] = null;
             }
+
+            if (!empty($clear_values)) {
+                $this->updateProductAttributes([$product_id], $clear_values, $storeId);
+
+                // The cache still held the pre-clear value, so a later read in
+                // getExistingAttributeData() could merge against stale data.
+                foreach (array_keys($clear_values) as $cleared_code) {
+                    unset($this->attributeDataCache[$product_id . ':' . $cleared_code]);
+                }
+            }
+
             // getDataItem writes to the product attributes and reports what happened.
             $sync_result = $this->getDataItem(
                 $select_attribute,
@@ -519,15 +714,20 @@ class UpdateAllSku
 
             return $sync_result;
         } catch (Exception $e) {
+            // A lock error thrown by the clear-attributes write above lands here.
+            // Report it as retryable so the queue row survives.
+            $retryable = $this->isRetryableDbError($e);
+
             $this->getInsertDataTable([
                 "sku" => $sku,
                 "alias_sku" => $aliasSku,
-                "message" => $e->getMessage(),
+                "message" => ($retryable ? 'Transient database lock, will retry: ' : '') . $e->getMessage(),
                 "data_type" => "",
                 "sync_source" => "2",
                 "lable" => "0"
             ]);
-            return self::RESULT_API_ERROR;
+
+            return $retryable ? self::RESULT_RETRY : self::RESULT_API_ERROR;
         }
     }
 
@@ -584,6 +784,48 @@ class UpdateAllSku
             ]);
             return false;
         }
+    }
+
+    /**
+     * Resolve the array key the media should be stored under.
+     *
+     * $byd_alias_sku always contains one entry per media row, and rows without
+     * an alias contribute an empty string. isset() is true for '', so the old
+     * `isset($byd_alias_sku[0]) ? ... : $product_sku_key` check never fell back
+     * and non-aliased SKUs were written under a "" key. Pick the first entry
+     * that is actually a non-empty alias, otherwise use the Magento SKU.
+     *
+     * @param array|string|null $byd_alias_sku
+     * @param string $product_sku_key
+     * @return string
+     */
+    protected function resolveAliasKey($byd_alias_sku, $product_sku_key)
+    {
+        foreach ((array)$byd_alias_sku as $candidate_alias) {
+            if (is_string($candidate_alias) && trim($candidate_alias) !== '') {
+                return trim($candidate_alias);
+            }
+        }
+
+        return $product_sku_key;
+    }
+
+    /**
+     * First non-empty alias, or null when the SKU has none. Used for log rows so
+     * alias_sku is stored as NULL instead of an empty string.
+     *
+     * @param array|string|null $byd_alias_sku
+     * @return string|null
+     */
+    protected function resolveLogAliasSku($byd_alias_sku)
+    {
+        foreach ((array)$byd_alias_sku as $candidate_alias) {
+            if (is_string($candidate_alias) && trim($candidate_alias) !== '') {
+                return trim($candidate_alias);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -690,7 +932,7 @@ class UpdateAllSku
             'bynder_delete_cron' => 1
         ];
         try {
-            $this->productAction->updateAttributes(
+            $this->updateProductAttributes(
                 [$product_ids],
                 $updated_values,
                 $storeId
@@ -744,8 +986,9 @@ class UpdateAllSku
     /**
      * Get Data Item
      *
-     * Returns one of self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED so the
-     * caller knows whether anything really landed in the product attribute.
+     * Returns one of self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED /
+     * RESULT_RETRY so the caller knows whether anything really landed in the
+     * product attribute, and whether the failure is worth retrying.
      *
      * @param string $select_attribute
      * @param array $convert_array
@@ -827,6 +1070,7 @@ class UpdateAllSku
                                 'image_alt_text' => [(!empty($alt_text) ? $alt_text : '###') . "\n"],
                                 'bynder_media_id_new' => [$data_value['bynder_md_id'] ?? ''],
                                 'is_order' => [$item_is_order . "\n"],
+                                'alias_sku' => $alias_sku,
                                 'all_alias_identifier' => $item_alias_identifier
                             ];
                             array_push($data_val_arr, $data_p);
@@ -841,6 +1085,7 @@ class UpdateAllSku
                                 'bynder_media_id_new' => [$data_value['bynder_md_id'] ?? ''],
                                 "type" => "video",
                                 'is_order' => [$item_is_order . "\n"],
+                                'alias_sku' => $alias_sku,
                                 'all_alias_identifier' => $item_alias_identifier
                             ];
                             array_push($data_val_arr, $data_p);
@@ -855,6 +1100,7 @@ class UpdateAllSku
                                 'image_alt_text' => [isset($data_value['alt_text']) && !empty($data_value['alt_text']) ? $data_value['alt_text'] : '###' . "\n"],
                                 'bynder_media_id_new' => [$data_value['bynder_md_id'] ?? ''],
                                 'is_order' => [$item_is_order . "\n"],
+                                'alias_sku' => $alias_sku,
                                 'all_alias_identifier' => $item_alias_identifier
                             ];
                             array_push($data_val_arr, $data_p);
@@ -924,9 +1170,9 @@ class UpdateAllSku
                         $is_order = array_unique($is_order);
                     } else {
                         if($data_value["is_base"] == 0){
-                            $new_magento_role_list[] = "###"."\n";    
+                            $new_magento_role_list[] = "###"."\n";
                         } else {
-                            $new_magento_role_list = ['Base', 'Small', 'Thumbnail', 'Swatch']; 
+                            $new_magento_role_list = ['Base', 'Small', 'Thumbnail', 'Swatch'];
                         }
                         $alt_text_vl = $data_value["thumbnails"]["img_alt_text"];
                         if (!empty($alt_text_vl)) {
@@ -1085,9 +1331,9 @@ class UpdateAllSku
                         $is_order = array_unique($is_order);
                     } else {
                         if($data_value["is_base"] == 0){
-                            $new_magento_role_list[] = "###"."\n";    
+                            $new_magento_role_list[] = "###"."\n";
                         } else {
-                            $new_magento_role_list = ['Base', 'Small', 'Thumbnail', 'Swatch']; 
+                            $new_magento_role_list = ['Base', 'Small', 'Thumbnail', 'Swatch'];
                         }
                         $alt_text_vl = $data_value["thumbnails"]["img_alt_text"];
                         if (!empty($alt_text_vl)) {
@@ -1211,6 +1457,12 @@ class UpdateAllSku
             $doc_write = $this->getProcessItemDoc($doc_data_arr, $doc_data);
         }
 
+        // Transient lock problem: nothing landed, but the SKU is still good.
+        // Reported ahead of RESULT_FAILED so the caller keeps the queue row.
+        if ($image_write === self::RESULT_RETRY || $doc_write === self::RESULT_RETRY) {
+            return self::RESULT_RETRY;
+        }
+
         // Any failed write means the SKU must stay "pending" for a retry.
         if ($image_write === self::RESULT_FAILED || $doc_write === self::RESULT_FAILED) {
             return self::RESULT_FAILED;
@@ -1239,7 +1491,7 @@ class UpdateAllSku
      *
      * @param array $data_arr
      * @param array $data_val_arr
-     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED
+     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED / RESULT_RETRY
      */
     public function getProcessItem($data_arr, $data_val_arr)
     {
@@ -1249,6 +1501,7 @@ class UpdateAllSku
         $alias_sku = [];
         $all_alias_identifier = [];
         $image_alt_text = [];
+        $byn_md_id_new = [];
 
         foreach ($data_arr as $key => $skus) {
             $alias_value = isset($data_val_arr[$key]['alias_sku']) ? $data_val_arr[$key]['alias_sku'] : '';
@@ -1268,6 +1521,7 @@ class UpdateAllSku
 
         $any_written = false;
         $any_failed = false;
+        $any_retry = false;
 
         foreach ($temp_arr as $group_key => $image_value) {
             $img_json = implode("", $image_value);
@@ -1296,9 +1550,15 @@ class UpdateAllSku
 
             if ($written === self::RESULT_UPDATED) {
                 $any_written = true;
+            } elseif ($written === self::RESULT_RETRY) {
+                $any_retry = true;
             } elseif ($written === self::RESULT_FAILED) {
                 $any_failed = true;
             }
+        }
+
+        if ($any_retry) {
+            return self::RESULT_RETRY;
         }
 
         if ($any_failed) {
@@ -1313,7 +1573,7 @@ class UpdateAllSku
      *
      * @param array $data_arr
      * @param array $data_val_arr
-     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED
+     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED / RESULT_RETRY
      */
     public function getProcessItemDoc($data_arr, $data_val_arr)
     {
@@ -1323,7 +1583,8 @@ class UpdateAllSku
         $alias_sku = [];
         $all_alias_identifier = [];
         $image_alt_text = [];
-        
+        $byn_md_id_new = [];
+
         foreach ($data_arr as $key => $skus) {
             $alias_value = isset($data_val_arr[$key]['alias_sku']) ? $data_val_arr[$key]['alias_sku'] : '';
             $group_key = $skus;
@@ -1342,6 +1603,7 @@ class UpdateAllSku
 
         $any_written = false;
         $any_failed = false;
+        $any_retry = false;
 
         foreach ($temp_arr as $group_key => $image_value) {
             $img_json = implode("", $image_value);
@@ -1370,9 +1632,15 @@ class UpdateAllSku
 
             if ($written === self::RESULT_UPDATED) {
                 $any_written = true;
+            } elseif ($written === self::RESULT_RETRY) {
+                $any_retry = true;
             } elseif ($written === self::RESULT_FAILED) {
                 $any_failed = true;
             }
+        }
+
+        if ($any_retry) {
+            return self::RESULT_RETRY;
         }
 
         if ($any_failed) {
@@ -1393,7 +1661,7 @@ class UpdateAllSku
      * @param string $byd_media_is_order
      * @param string $byd_alias_sku
      * @param string $byn_all_alias_identifier
-     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED
+     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED / RESULT_RETRY
      */
     public function getUpdateDoc($img_json, $product_sku_key, $mg_img_role_option, $img_alt_text, $bynder_media_ids, $byd_media_is_order, $byd_alias_sku, $byn_all_alias_identifier)
     {
@@ -1416,8 +1684,9 @@ class UpdateAllSku
             // Initialize log data array for documents
             $log_documents = [];
 
-            // Get alias key
-            $alias_key = isset($byd_alias_sku[0]) ? $byd_alias_sku[0] : $product_sku_key;
+            // Get alias key. Falls back to the Magento SKU when the row carries no
+            // real alias, instead of the old empty-string key.
+            $alias_key = $this->resolveAliasKey($byd_alias_sku, $product_sku_key);
 
             if (empty($doc_values)) {
                 $new_doc_array = explode("\n", $img_json);
@@ -1446,7 +1715,7 @@ class UpdateAllSku
 
                 $docData = [];
                 if (!empty($doc_detail)) {
-                    $docData[$product_sku_key] = $doc_detail;
+                    $docData[$alias_key] = $doc_detail;
                 }
 
                 // Nothing valid to persist - not an error, just nothing to sync.
@@ -1456,15 +1725,17 @@ class UpdateAllSku
 
                 $new_value_array = json_encode($docData, true);
 
-                $this->productAction->updateAttributes(
+                $this->updateProductAttributes(
                     [$product_ids],
                     ['bynder_document' => $new_value_array],
                     $storeId
                 );
+
+                $this->setAttributeDataCache($_product, 'bynder_document', $docData);
             } else {
                 $item_old_value = $doc_values;
                 if (is_array($item_old_value)) {
-                    $skuExistingItems = isset($item_old_value[$product_sku_key]) ? $item_old_value[$product_sku_key] : [];
+                    $skuExistingItems = isset($item_old_value[$alias_key]) ? $item_old_value[$alias_key] : [];
                     $all_item_url = [];
                     $b_id = [];
 
@@ -1508,8 +1779,8 @@ class UpdateAllSku
                     return self::RESULT_NO_DATA;
                 }
 
-                $existingGroupItems = isset($doc_values[$product_sku_key]) && is_array($doc_values[$product_sku_key])
-                    ? $doc_values[$product_sku_key]
+                $existingGroupItems = isset($doc_values[$alias_key]) && is_array($doc_values[$alias_key])
+                    ? $doc_values[$alias_key]
                     : [];
 
                 $mergedDocItems = $existingGroupItems;
@@ -1528,13 +1799,18 @@ class UpdateAllSku
                 }
 
                 if (!empty($mergedDocItems)) {
-                    $doc_values[$product_sku_key] = $mergedDocItems;
+                    $doc_values[$alias_key] = $mergedDocItems;
                 } else {
-                    unset($doc_values[$product_sku_key]);
+                    unset($doc_values[$alias_key]);
+                }
+
+                // Drop any legacy "" bucket left behind by the old alias handling.
+                if (array_key_exists('', $doc_values)) {
+                    unset($doc_values['']);
                 }
 
                 $new_value_array = json_encode($doc_values, true);
-                $this->productAction->updateAttributes(
+                $this->updateProductAttributes(
                     [$product_ids],
                     ['bynder_document' => $new_value_array],
                     $storeId
@@ -1548,7 +1824,7 @@ class UpdateAllSku
                 $log_value_array = json_encode($log_documents, true);
                 $insert_data = [
                     "sku" => $product_sku_key,
-                    "alias_sku" => $alias_key,
+                    "alias_sku" => $this->resolveLogAliasSku($byd_alias_sku),
                     "message" => $log_value_array,
                     "data_type" => "3",
                     "sync_source" => "2",
@@ -1559,17 +1835,22 @@ class UpdateAllSku
 
             return self::RESULT_UPDATED;
         } catch (\Exception $e) {
-            // Log the failure and tell the caller nothing was written, so the
-            // queue row survives for the next run.
+            // A lock wait timeout / deadlock is transient: report RESULT_RETRY so
+            // the caller keeps the queue row pending instead of deleting the SKU.
+            $retryable = $this->isRetryableDbError($e);
+
             $this->getInsertDataTable([
                 "sku" => $product_sku_key,
-                "alias_sku" => isset($byd_alias_sku[0]) ? $byd_alias_sku[0] : null,
-                "message" => 'Document attribute update failed: ' . $e->getMessage(),
+                "alias_sku" => $this->resolveLogAliasSku($byd_alias_sku),
+                "message" => ($retryable
+                        ? 'Transient database lock on document attribute, will retry: '
+                        : 'Document attribute update failed: ') . $e->getMessage(),
                 "data_type" => "",
                 "sync_source" => "2",
                 "lable" => "0"
             ]);
-            return self::RESULT_FAILED;
+
+            return $retryable ? self::RESULT_RETRY : self::RESULT_FAILED;
         }
     }
 
@@ -1584,7 +1865,7 @@ class UpdateAllSku
      * @param string $byd_media_is_order
      * @param string $byd_alias_sku
      * @param string $byn_all_alias_identifier
-     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED
+     * @return string self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED / RESULT_RETRY
      */
     public function getUpdateImage($img_json, $product_sku_key, $mg_img_role_option, $img_alt_text, $bynder_media_ids, $byd_media_is_order, $byd_alias_sku, $byn_all_alias_identifier)
     {
@@ -1606,7 +1887,12 @@ class UpdateAllSku
             } elseif (is_array($bynder_media_ids)) {
                 $bynder_media_id = $bynder_media_ids;
             }
-            $alias_key = isset($byd_alias_sku[0]) ? $byd_alias_sku[0] : $product_sku_key;
+            // $byd_alias_sku holds one entry per media row and non-aliased rows
+            // contribute ''. isset() is true for '', so the previous
+            // `isset($byd_alias_sku[0]) ? ... : $product_sku_key` check never
+            // reached its fallback and the JSON was keyed by "". Resolve the first
+            // genuinely non-empty alias, otherwise fall back to the Magento SKU.
+            $alias_key = $this->resolveAliasKey($byd_alias_sku, $product_sku_key);
             $isOrder = explode("\n", $byd_media_is_order);
 
             $new_image_array = explode("\n", $img_json);
@@ -1725,6 +2011,12 @@ class UpdateAllSku
                 unset($image_value[$alias_key]);
             }
 
+            // Drop any legacy "" bucket written by the previous alias handling, so
+            // a re-sync cleans the product up instead of leaving both keys.
+            if (array_key_exists('', $image_value)) {
+                unset($image_value['']);
+            }
+
             $new_value_array = json_encode($image_value, true);
             $log_value_array = json_encode($log_data, true);
 
@@ -1733,7 +2025,7 @@ class UpdateAllSku
                 'bynder_isMain' => $this->determineMediaType($image_value),
                 'use_bynder_cdn' => 1
             ];
-            $this->productAction->updateAttributes(
+            $this->updateProductAttributes(
                 [$product_ids],
                 $updated_values,
                 $storeId
@@ -1746,7 +2038,7 @@ class UpdateAllSku
             if (!empty($log_data)) {
                 $insert_data = [
                     "sku" => $product_sku_key,
-                    "alias_sku" => $alias_key,
+                    "alias_sku" => $this->resolveLogAliasSku($byd_alias_sku),
                     "message" => $log_value_array,
                     "data_type" => "1",
                     "sync_source" => "2",
@@ -1757,15 +2049,23 @@ class UpdateAllSku
 
             return self::RESULT_UPDATED;
         } catch (\Exception $e) {
+            // 1205 / 1213 are transient: keep the queue row so the next run retries
+            // instead of deleting the SKU and losing it, which is what the old
+            // RESULT_FAILED path did on every lock wait timeout.
+            $retryable = $this->isRetryableDbError($e);
+
             $this->getInsertDataTable([
                 "sku" => $product_sku_key,
-                "alias_sku" => isset($byd_alias_sku[0]) ? $byd_alias_sku[0] : null,
-                "message" => 'Image attribute update failed: ' . $e->getMessage(),
+                "alias_sku" => $this->resolveLogAliasSku($byd_alias_sku),
+                "message" => ($retryable
+                        ? 'Transient database lock on image attribute, will retry: '
+                        : 'Image attribute update failed: ') . $e->getMessage(),
                 "data_type" => "",
                 "sync_source" => "2",
                 "lable" => "0"
             ]);
-            return self::RESULT_FAILED;
+
+            return $retryable ? self::RESULT_RETRY : self::RESULT_FAILED;
         }
     }
 

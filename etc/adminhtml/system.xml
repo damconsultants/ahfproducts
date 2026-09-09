@@ -25,6 +25,10 @@
                     <label>License Key</label>
                     <comment>Enter your License Key Here.</comment>
                 </field>
+                <!-- <field id="api_url" translate="label" type="text" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>API URL</label>
+                    <comment>Enter your API URL Here.</comment>
+                </field> -->
                 <field id="bt_id" translate="label" type="button" sortOrder="4" showInDefault="1" showInWebsite="1" showInStore="1">
                     <frontend_model>DamConsultants\Ahfproducts\Block\System\Config\Button</frontend_model>
                 </field>
@@ -76,7 +80,7 @@
                 </field>
             </group> 
         </section>
-        <!-- <section id="byndersyncaliasdata" translate="label" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+        <!-- <section id="byndersyncaliasdata" translate="label" sortOrder="150" showInDefault="1" showInWebsite="1" showInStore="1">
             <label>Sync. Alias AHF Data</label>
             <tab>bynder_tab</tab>
             <resource>DamConsultants_Ahfproducts::config</resource>
@@ -129,7 +133,7 @@
                     <label>Enter Your Sku Limit</label>
                     <validate>validate-digits</validate>
                     <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
-                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
+                    <comment>Please enter a number only. Maximum 60 requests are allowed every 2 minutes.</comment>
 					<depends>
                         <field id="frequency">E</field>
                         <field id="fetch_enable">1</field>
@@ -178,7 +182,7 @@
                     <label>Enter Your Sku Limit</label>
                     <validate>validate-digits</validate>
                     <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
-                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
+                    <comment>Please enter a number only. Maximum 60 requests are allowed every 2 minutes.</comment>
 					<depends>
                         <field id="auto_add_sku_frequency">E</field>
                         <field id="auto_enable">1</field>
@@ -225,7 +229,7 @@
                     <label>Enter Your Sku Limit</label>
                     <validate>validate-digits</validate>
                     <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
-                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
+                    <comment>Please enter a number only. Maximum 60 requests are allowed every 2 minutes.</comment>
 					<depends>
                         <field id="update_sku_frequency">E</field>
                         <field id="update_enable">1</field>
@@ -272,7 +276,7 @@
                     <label>Enter Your Sku Limit</label>
                     <validate>validate-digits</validate>
                     <backend_model>DamConsultants\Ahfproducts\Model\Config\Source\SkuLimit</backend_model>
-                    <comment>Enter Your Only Number. Maximum allowed is 50.</comment>
+                    <comment>Please enter a number only. Maximum 60 requests are allowed every 2 minutes.</comment>
 					<depends>
                         <field id="update_alias_sku_frequency">E</field>
                         <field id="update_alias_enable">1</field>

@@ -59,6 +59,12 @@
            action="bynder/index/sku"
            resource="DamConsultants_Ahfproducts::menu_item9"
            />
+           <add id="DamConsultants_Ahfproducts::menu_item10"
+               title="Update SKU Reports" module="DamConsultants_Ahfproducts"
+               sortOrder="20" parent="DamConsultants_Ahfproducts::menu_item7"
+               action="bynder/index/updateskureport"
+               resource="DamConsultants_Ahfproducts::menu_item10"
+               />
        <!-- END:   new node -->
         <!-- START: new node -->
        

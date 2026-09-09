@@ -10,8 +10,8 @@ class MinutesLimit extends Value
     {
         $value = (int) $this->getValue();
 
-        if ($value < 3) {
-            $value = 3;
+        if ($value < 2) {
+            $value = 2;
         }
 
         $this->setValue($value);

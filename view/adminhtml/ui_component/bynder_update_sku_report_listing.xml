@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<listing xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <argument name="data" xsi:type="array">
+        <item name="js_config" xsi:type="array">
+            <item name="provider" xsi:type="string">bynder_update_sku_report_listing.bynder_update_sku_report_listing_data_source</item>
+            <item name="deps" xsi:type="string">bynder_update_sku_report_listing.bynder_update_sku_report_listing_data_source</item>
+        </item>
+        <item name="spinner" xsi:type="string">columns</item>
+    </argument>
+    <dataSource name="bynder_update_sku_report_listing_data_source">
+        <argument name="dataProvider" xsi:type="configurableObject">
+            <argument name="class" xsi:type="string">DamConsultants\Ahfproducts\Ui\DataProvider\UpdateSkuReportDataProvider</argument>
+            <argument name="name" xsi:type="string">bynder_update_sku_report_listing_data_source</argument>
+            <argument name="primaryFieldName" xsi:type="string">id</argument>
+            <argument name="requestFieldName" xsi:type="string">id</argument>
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="component" xsi:type="string">Magento_Ui/js/grid/provider</item>
+                    <item name="update_url" xsi:type="url" path="mui/index/render" />
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="indexField" xsi:type="string">id</item>
+                    </item>
+                </item>
+            </argument>
+        </argument>
+    </dataSource>
+    <listingToolbar name="listing_top">
+        <filters name="listing_filters" />
+        <paging name="listing_paging" />
+    </listingToolbar>
+    <columns name="columns">
+        <column name="id">
+            <settings><filter>textRange</filter><label translate="true">ID</label><sorting>desc</sorting></settings>
+        </column>
+        <column name="token">
+            <settings><filter>text</filter><label translate="true">Token</label></settings>
+        </column>
+        <column name="total_sku">
+            <settings><filter>textRange</filter><label translate="true">Total SKUs</label></settings>
+        </column>
+        <column name="success_count">
+            <settings><filter>textRange</filter><label translate="true">Success</label></settings>
+        </column>
+        <column name="failed_count">
+            <settings><filter>textRange</filter><label translate="true">Failed</label></settings>
+        </column>
+        <column name="no_data_count">
+            <settings><filter>textRange</filter><label translate="true">No Data</label></settings>
+        </column>
+        <column name="pending_count">
+            <settings><filter>textRange</filter><label translate="true">Pending</label></settings>
+        </column>
+        <column name="status">
+            <settings><filter>text</filter><label translate="true">Status</label></settings>
+        </column>
+        <column name="updated_at">
+            <settings><filter>dateRange</filter><label translate="true">Updated At</label></settings>
+        </column>
+        <actionsColumn name="download" class="DamConsultants\Ahfproducts\Ui\Component\Listing\Column\UpdateSkuReportDownload">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="indexField" xsi:type="string">id</item>
+                </item>
+            </argument>
+            <settings>
+                <label translate="true">Report</label>
+            </settings>
+        </actionsColumn>
+    </columns>
+</listing>

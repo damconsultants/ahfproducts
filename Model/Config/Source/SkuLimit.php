@@ -10,12 +10,8 @@ class SkuLimit extends Value
     {
         $value = (int) $this->getValue();
 
-        if ($value > 50) {
-            $value = 50;
-        }
-
         if ($value < 0) {
-            $value = 0;
+            $value = 1;
         }
 
         $this->setValue($value);

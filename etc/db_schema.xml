@@ -129,4 +129,40 @@
          <column name="id" />
       </constraint>
    </table>
+   <table name="bynder_update_sku_report" resource="default" engine="innodb" comment="Bynder Update Sku Report">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="int" name="queue_id" nullable="false" comment="Queue row id" />
+      <column xsi:type="text" name="token" nullable="true" comment="Submission token" />
+      <column xsi:type="text" name="sku" nullable="true" comment="Product sku" />
+      <column xsi:type="text" name="select_attribute" nullable="true" comment="Selected attribute" />
+      <column xsi:type="text" name="select_store" nullable="true" comment="Store id" />
+      <column xsi:type="text" name="status" nullable="false" comment="Sync result" />
+      <column xsi:type="text" name="message" nullable="true" comment="Sync result message" />
+      <column name="created_at" nullable="false" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="false" />
+      <column name="updated_at" nullable="false" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="true" />
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+      <constraint xsi:type="unique" referenceId="BYNDER_UPDATE_SKU_REPORT_QUEUE_ID_UNIQUE">
+         <column name="queue_id" />
+      </constraint>
+   </table>
+   <table name="bynder_update_sku_token" resource="default" engine="innodb" comment="Bynder Update Sku Token Summary">
+      <column xsi:type="int" name="id" padding="7" unsigned="false" nullable="false" identity="true" comment="id" />
+      <column xsi:type="varchar" name="token" length="255" nullable="false" comment="Submission token" />
+      <column xsi:type="int" name="total_sku" nullable="false" default="0" comment="Total SKUs" />
+      <column xsi:type="int" name="success_count" nullable="false" default="0" comment="Successful SKUs" />
+      <column xsi:type="int" name="failed_count" nullable="false" default="0" comment="Failed SKUs" />
+      <column xsi:type="int" name="no_data_count" nullable="false" default="0" comment="SKUs without data" />
+      <column xsi:type="int" name="pending_count" nullable="false" default="0" comment="Pending SKUs" />
+      <column xsi:type="varchar" name="status" length="32" nullable="false" default="pending" comment="Token status" />
+      <column name="created_at" nullable="false" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="false" />
+      <column name="updated_at" nullable="false" xsi:type="datetime" default="CURRENT_TIMESTAMP" on_update="true" />
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+      <constraint xsi:type="unique" referenceId="BYNDER_UPDATE_SKU_TOKEN_TOKEN_UNIQUE">
+         <column name="token" />
+      </constraint>
+   </table>
 </schema>

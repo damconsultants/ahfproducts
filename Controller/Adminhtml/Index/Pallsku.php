@@ -37,10 +37,12 @@ class Pallsku extends Action implements HttpPostActionInterface
         try {
             $connection = $this->resource->getConnection();
             $table = $this->resource->getTableName('bynder_update_sku');
+            $tokenTable = $this->resource->getTableName('bynder_update_sku_token');
 
             if (!empty($product_sku)) {
                 $numericToken = $this->mathRandom->getRandomNumber(10000000, 99999999);
                 $productSku = explode(",", trim($product_sku));
+                $insertedCount = 0;
                 foreach ($productSku as $sku) {
                     // Check if the SKU with same attribute and store already exists
                     $selectQuery = $connection->select()
@@ -63,8 +65,14 @@ class Pallsku extends Action implements HttpPostActionInterface
                             'status' => 'pending',
                             'token' => $numericToken // Store the generated token
                         ]);
+                        $insertedCount++;
                     }
                 }
+                $connection->insertOnDuplicate($tokenTable, [
+                    'token' => $numericToken,
+                    'total_sku' => $insertedCount,
+                    'status' => 'pending'
+                ], ['total_sku', 'status']);
 				return $result->setData(['status' => 1, 'message' => 'SKUs added to queue Please Copy This '. $numericToken. ' Token' ]);
             } else {
 				$result_data = $result->setData(['status' => 0, 'message' => 'Please enter atleast 21 or more SKUs.']);
