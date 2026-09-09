@@ -289,6 +289,21 @@ class UpdateAllSku
                 // Collect the outcome of every alias attempt for this queue row.
                 $sync_results = [];
 
+                // Clear the Bynder media attributes ONCE per queue row, before any
+                // alias is processed. This used to happen inside processSku(), so
+                // every alias iteration wiped what the previous alias had written
+                // and only the last one (the parent SKU) survived in the JSON.
+                $clear_result = $this->clearProductMediaAttributes($sku, $product_id);
+                if ($clear_result !== null) {
+                    $this->saveSkuReport(
+                        $skuData,
+                        'pending',
+                        'Unable to reset Bynder media attributes; waiting for retry'
+                    );
+                    $retained_count++;
+                    continue;
+                }
+
                 $aliasSku = $this->datahelper->getSkuByAlias($sku);
                 $is_sku_made_alias = 0;
                 if ($aliasSku === null || empty($aliasSku)) {
@@ -595,6 +610,66 @@ class UpdateAllSku
     }
 
     /**
+     * Reset the Bynder media attributes for one queue row.
+     *
+     * Must run exactly once per SKU, before the alias loop starts. Each alias
+     * then merges into the same attribute value instead of overwriting it, so a
+     * SKU that has aliases ends up as {"ALIAS":[...],"PARENT":[...]} rather than
+     * only holding whichever alias happened to be processed last.
+     *
+     * @param string $sku
+     * @param int $product_id
+     * @return string|null RESULT_RETRY / RESULT_API_ERROR on failure, null on success
+     */
+    protected function clearProductMediaAttributes($sku, $product_id)
+    {
+        try {
+            $_product = $this->_productRepository->get($sku);
+            $storeId = $this->storeManagerInterface->getStore()->getId();
+
+            // One write instead of two. Every updateAttributes() call is its own
+            // transaction against catalog_product_entity, so halving them halves
+            // the window in which another process can collide with this one.
+            $clear_values = [];
+            if (!empty($_product->getBynderMultiImg())) {
+                $clear_values['bynder_multi_img'] = null;
+            }
+            if (!empty($_product->getBynderDocument())) {
+                $clear_values['bynder_document'] = null;
+            }
+
+            if (empty($clear_values)) {
+                return null;
+            }
+
+            $this->updateProductAttributes([$product_id], $clear_values, $storeId);
+
+            // The attribute is NULL now, so the in-request cache must report
+            // "empty" instead of still holding the pre-clear value.
+            foreach (array_keys($clear_values) as $cleared_code) {
+                $this->attributeDataCache[$product_id . ':' . $cleared_code] = [];
+            }
+
+            return null;
+        } catch (Exception $e) {
+            $retryable = $this->isRetryableDbError($e);
+
+            $this->getInsertDataTable([
+                "sku" => $sku,
+                "alias_sku" => null,
+                "message" => ($retryable
+                        ? 'Transient database lock while clearing media attributes, will retry: '
+                        : 'Unable to clear media attributes: ') . $e->getMessage(),
+                "data_type" => "",
+                "sync_source" => "2",
+                "lable" => "0"
+            ]);
+
+            return $retryable ? self::RESULT_RETRY : self::RESULT_API_ERROR;
+        }
+    }
+
+    /**
      * Process Single SKU
      *
      * Returns one of self::RESULT_UPDATED / RESULT_NO_DATA / RESULT_FAILED /
@@ -675,32 +750,10 @@ class UpdateAllSku
                 return self::RESULT_NO_DATA;
             }
 
-            $product_id = $this->product->getIdBySku($sku);
-            $_product = $this->_productRepository->get($sku);
-            $bynder_multi_img = $_product->getBynderMultiImg();
-            $bynder_doc = $_product->getBynderDocument();
-            $storeId = $this->storeManagerInterface->getStore()->getId();
-
-            // One write instead of two. Every updateAttributes() call is its own
-            // transaction against catalog_product_entity, so halving them halves
-            // the window in which another process can collide with this one.
-            $clear_values = [];
-            if (!empty($bynder_multi_img)) {
-                $clear_values['bynder_multi_img'] = null;
-            }
-            if (!empty($bynder_doc)) {
-                $clear_values['bynder_document'] = null;
-            }
-
-            if (!empty($clear_values)) {
-                $this->updateProductAttributes([$product_id], $clear_values, $storeId);
-
-                // The cache still held the pre-clear value, so a later read in
-                // getExistingAttributeData() could merge against stale data.
-                foreach (array_keys($clear_values) as $cleared_code) {
-                    unset($this->attributeDataCache[$product_id . ':' . $cleared_code]);
-                }
-            }
+            // The Bynder media attributes are cleared once per queue row in
+            // runQueue(), before the alias loop. Clearing them here as well made
+            // every alias erase the JSON written by the previous alias, so the
+            // attribute ended up holding only the last alias that was processed.
 
             // getDataItem writes to the product attributes and reports what happened.
             $sync_result = $this->getDataItem(
@@ -714,8 +767,8 @@ class UpdateAllSku
 
             return $sync_result;
         } catch (Exception $e) {
-            // A lock error thrown by the clear-attributes write above lands here.
-            // Report it as retryable so the queue row survives.
+            // A lock error thrown by an attribute write lands here. Report it as
+            // retryable so the queue row survives.
             $retryable = $this->isRetryableDbError($e);
 
             $this->getInsertDataTable([
@@ -1899,11 +1952,12 @@ class UpdateAllSku
             $new_alttext_array = explode("\n", $img_alt_text);
             $new_magento_role_option_array = $mg_img_role_option;
 
+            // Only ever merge into this alias' own bucket. The old fallback to
+            // $image_value[$product_sku_key] copied the parent SKU's media into
+            // the alias bucket whenever the parent was written first.
             $existing_items = [];
             if (isset($image_value[$alias_key]) && is_array($image_value[$alias_key])) {
                 $existing_items = $image_value[$alias_key];
-            } elseif (isset($image_value[$product_sku_key]) && is_array($image_value[$product_sku_key])) {
-                $existing_items = $image_value[$product_sku_key];
             }
 
             foreach ($new_image_array as $vv => $new_image_value) {
