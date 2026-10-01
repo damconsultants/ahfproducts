@@ -1,6 +1,9 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
 	<preference for="DamConsultants\Ahfproducts\Api\BynderMetapropertyInterface" type="DamConsultants\Ahfproducts\Model\BynderMetaproperty" />
+    <type name="Magento\Catalog\Model\Product\Action">
+        <plugin name="ahf_bynder_media_sku_sync" type="DamConsultants\Ahfproducts\Plugin\Catalog\Product\BynderMediaSkuActionPlugin" />
+    </type>
     <type name="Magento\Framework\View\Element\UiComponent\DataProvider\CollectionFactory">
         <arguments>
             <argument name="collections" xsi:type="array">

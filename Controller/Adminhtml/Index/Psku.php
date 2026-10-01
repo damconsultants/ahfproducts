@@ -1830,7 +1830,7 @@ class Psku extends \Magento\Backend\App\Action
                     } catch (Exception $e) {
                         $insert_data = [
                             "sku" => $sku,
-                            'alias_sku' => $aliasSku,
+                            'alias_sku' => (strcasecmp(trim($aliasSku), trim($sku)) === 0) ? "" : $aliasSku,
                             "message" => $e->getMessage(),
                             "data_type" => "",
                             "sync_source" => "1",
@@ -1842,7 +1842,7 @@ class Psku extends \Magento\Backend\App\Action
                 } else {
                     $insert_data = [
                         "sku" => $sku,
-                        'alias_sku' => $aliasSku,
+                        'alias_sku' => (strcasecmp(trim($aliasSku), trim($sku)) === 0) ? "" : $aliasSku,
                         "message" => $convert_array['data'],
                         "data_type" => "",
                         "sync_source" => "1",

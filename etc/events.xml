@@ -3,4 +3,10 @@
    <event name="cms_page_save_after">
       <observer name="custommodule_cms_page_save_after" instance="DamConsultants\Ahfproducts\Observer\CmsPageSaveAfterObserver" />
    </event>
+   <event name="catalog_product_save_after">
+      <observer name="ahf_bynder_media_sku_product_save" instance="DamConsultants\Ahfproducts\Observer\BynderMediaSkuProductSave" />
+   </event>
+   <event name="catalog_product_delete_after">
+      <observer name="ahf_bynder_media_sku_product_delete" instance="DamConsultants\Ahfproducts\Observer\BynderMediaSkuProductDelete" />
+   </event>
 </config>

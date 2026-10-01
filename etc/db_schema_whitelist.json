@@ -28,5 +28,23 @@
         "constraint": {
             "PRIMARY": true
         }
+    },
+    "bynder_media_sku": {
+        "column": {
+            "id": true,
+            "parent_sku": true,
+            "child_sku": true,
+            "media_id": true,
+            "image_url": true,
+            "created_at": true
+        },
+        "index": {
+            "BYNDER_MEDIA_SKU_MEDIA_ID": true,
+            "BYNDER_MEDIA_SKU_PARENT_SKU": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "BYNDER_MEDIA_SKU_PARENT_CHILD_MEDIA_UNIQUE": true
+        }
     }
 }

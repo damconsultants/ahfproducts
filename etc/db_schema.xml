@@ -165,4 +165,26 @@
          <column name="token" />
       </constraint>
    </table>
+   <table name="bynder_media_sku" resource="default" engine="innodb" comment="Bynder Media Id to SKU mapping">
+      <column xsi:type="int" name="id" padding="10" unsigned="true" nullable="false" identity="true" comment="Id" />
+      <column xsi:type="varchar" name="parent_sku" length="128" nullable="false" comment="Parent (Magento product) SKU" />
+      <column xsi:type="varchar" name="child_sku" length="128" nullable="false" comment="Child / alias SKU" />
+      <column xsi:type="varchar" name="media_id" length="128" nullable="false" comment="Bynder media id" />
+      <column xsi:type="text" name="image_url" nullable="true" comment="Bynder image URL" />
+      <column xsi:type="datetime" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At" />
+      <constraint xsi:type="primary" referenceId="PRIMARY">
+         <column name="id" />
+      </constraint>
+      <constraint xsi:type="unique" referenceId="BYNDER_MEDIA_SKU_PARENT_CHILD_MEDIA_UNIQUE">
+         <column name="parent_sku" />
+         <column name="child_sku" />
+         <column name="media_id" />
+      </constraint>
+      <index referenceId="BYNDER_MEDIA_SKU_MEDIA_ID" indexType="btree">
+         <column name="media_id" />
+      </index>
+      <index referenceId="BYNDER_MEDIA_SKU_PARENT_SKU" indexType="btree">
+         <column name="parent_sku" />
+      </index>
+   </table>
 </schema>

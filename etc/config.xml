@@ -2,6 +2,13 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
+        <dev>
+            <js>
+                <minify_exclude>
+                    <damconsultants_bynder_compactview>/bynder-compactview</damconsultants_bynder_compactview>
+                </minify_exclude>
+            </js>
+        </dev>
         <byndersyncdata>
             <bynder_sync_data>
                 <sku_limit>10</sku_limit>

@@ -7,12 +7,24 @@ use \Psr\Log\LoggerInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\Catalog\Model\ProductRepository;
 use Magento\Catalog\Model\Product\Action;
+use Magento\Framework\Lock\LockManagerInterface;
 use DamConsultants\Ahfproducts\Model\BynderFactory;
 use DamConsultants\Ahfproducts\Model\ResourceModel\Collection\MetaPropertyCollectionFactory;
 use DamConsultants\Ahfproducts\Model\ResourceModel\Collection\BynderMediaTableCollectionFactory;
 
 class FeatchNullDataToMagento
 {
+    /**
+     * Default number of SKUs fetched and processed per batch
+     * (used when "Fetch Product SKU Limit" config is empty).
+     */
+    const BATCH_SIZE = 20;
+
+    /**
+     * Lock name that stops two runs of this cron overlapping.
+     */
+    const LOCK_NAME = 'damconsultants_ahfproducts_fetch_null_data';
+
     /**
      * @var \Psr\Log\LoggerInterface
      */
@@ -69,11 +81,20 @@ class FeatchNullDataToMagento
      * @var $_resource
      */
     protected $_resource;
+    /**
+     * @var LockManagerInterface
+     */
+    protected $lockManager;
 
     /**
      * @var array
      */
     protected $attributeDataCache = [];
+
+    /**
+     * @var array|null Per-SKU log buffer (one log row per SKU)
+     */
+    protected $skuLogBuffer = null;
 
     /**
      * Featch Null Data To Magento
@@ -89,6 +110,7 @@ class FeatchNullDataToMagento
      * @param MetaPropertyCollectionFactory $metaPropertyCollectionFactory
      * @param BynderFactory $bynder
      * @param \Magento\Framework\App\ResourceConnection $resource
+     * @param LockManagerInterface $lockManager
      */
     public function __construct(
         LoggerInterface $logger,
@@ -102,7 +124,8 @@ class FeatchNullDataToMagento
         Action $action,
         MetaPropertyCollectionFactory $metaPropertyCollectionFactory,
         BynderFactory $bynder,
-        \Magento\Framework\App\ResourceConnection $resource
+        \Magento\Framework\App\ResourceConnection $resource,
+        LockManagerInterface $lockManager
     ) {
 
         $this->logger = $logger;
@@ -117,9 +140,14 @@ class FeatchNullDataToMagento
         $this->storeManagerInterface = $storeManagerInterface;
         $this->bynder = $bynder;
         $this->_resource = $resource;
+        $this->lockManager = $lockManager;
     }
+
     /**
      * Execute
+     *
+     * Processes ALL unsynced product SKUs in one run, fetching and syncing them
+     * in batches of "Fetch Product SKU Limit" (default BATCH_SIZE = 20).
      *
      * @return boolean
      */
@@ -129,16 +157,100 @@ class FeatchNullDataToMagento
         if (!$enable) {
             return false;
         }
-        $product_collection = $this->collectionFactory->create();
-        $product_sku_limit = (int)$this->datahelper->getFetchProductSkuLimitConfig();
-        if (!empty($product_sku_limit)) {
-            //echo "Not empty ". $product_sku_limit;
-            $product_collection->getSelect()->limit($product_sku_limit);
-        } else {
-            //echo "empty ". $product_sku_limit;
-            $product_collection->getSelect()->limit(10);
+
+        // Stop a second run from starting while a long run is still going.
+        if (!$this->lockManager->lock(self::LOCK_NAME, 0)) {
+            $this->logger->info('Bynder fetch cron: previous run still in progress, skipping.');
+            return false;
         }
-        $product_collection->addAttributeToSelect('*')
+
+        try {
+            // Config value is now the batch size; all pending SKUs are processed.
+            $batchSize = (int)$this->datahelper->getFetchProductSkuLimitConfig();
+            if ($batchSize <= 0) {
+                $batchSize = self::BATCH_SIZE;
+            }
+
+            $property_id = null;
+            $collection = $this->metaPropertyCollectionFactory->create()->getData();
+            $meta_properties = $this->getMetaPropertiesCollection($collection);
+            $collection_value = $meta_properties['collection_data_value'];
+            $collection_slug_val = $meta_properties['collection_data_slug_val'];
+
+            $lastEntityId = 0;
+            $processed = 0;
+            $batchNo = 0;
+
+            // Keep fetching batches until no unsynced products are left.
+            while (true) {
+                $batch = $this->getProductBatch($lastEntityId, $batchSize);
+                if (empty($batch)) {
+                    break; // nothing left to sync
+                }
+                $batchNo++;
+
+                foreach ($batch as $row) {
+                    // Move the cursor forward even if this SKU fails,
+                    // so a bad SKU can never block the rest of the run.
+                    $lastEntityId = (int)$row['entity_id'];
+                    $processed++;
+
+                    $sku = trim((string)($row['sku'] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+
+                    $this->startSkuLog($sku);
+                    try {
+                        $this->processSku($sku, $property_id, $collection_value, $collection_slug_val);
+                    } catch (\Throwable $e) {
+                        $this->logger->error('Bynder fetch cron SKU ' . $sku . ': ' . $e->getMessage());
+                        $this->getInsertDataTable([
+                            "sku" => $sku,
+                            'alias_sku' => null,
+                            "message" => $e->getMessage(),
+                            "data_type" => "",
+                            'media_id' => "",
+                            'remove_for_magento' => '',
+                            'added_on_cron_compactview' => '',
+                            "lable" => "0"
+                        ]);
+                        $this->updateBynderCronSync($sku);
+                    }
+                    $this->flushSkuLog();
+                }
+
+                // Free memory between batches.
+                $this->attributeDataCache = [];
+                if (method_exists($this->_productRepository, 'cleanCache')) {
+                    $this->_productRepository->cleanCache();
+                }
+
+                $this->logger->info(sprintf(
+                    'Bynder fetch cron: batch %d done (%d SKUs processed, last entity_id %d)',
+                    $batchNo,
+                    $processed,
+                    $lastEntityId
+                ));
+            }
+        } finally {
+            $this->lockManager->unlock(self::LOCK_NAME);
+        }
+
+        return true;
+    }
+
+    /**
+     * Fetch the next batch of unsynced products after the given entity id.
+     *
+     * @param int $lastEntityId
+     * @param int $batchSize
+     * @return array
+     */
+    protected function getProductBatch($lastEntityId, $batchSize)
+    {
+        $product_collection = $this->collectionFactory->create();
+        $product_collection->addAttributeToSelect('sku')
             ->addAttributeToFilter(
                 [
                     ['attribute' => 'bynder_multi_img', 'null' => true]
@@ -150,206 +262,168 @@ class FeatchNullDataToMagento
                 ]
             )
             ->addAttributeToFilter('type_id', ['neq' => "configurable"])
-            ->load();
-        $property_id = null;
-        $collection = $this->metaPropertyCollectionFactory->create()->getData();
-        $meta_properties = $this->getMetaPropertiesCollection($collection);
-        $collection_value = $meta_properties['collection_data_value'];
-        $collection_slug_val = $meta_properties['collection_data_slug_val'];
-        $productSku_array = [];
-        foreach ($product_collection->getData() as $product) {
-            if (!empty($product['sku'])) {
-                $productSku_array[] = $product['sku'];
-            }
-        }
-        if (count($productSku_array) > 0) {
-            foreach ($productSku_array as $sku) {
-                if ($sku != "") {
-                    $aliasSku = $this->datahelper->getSkuByAlias($sku);
-                    $is_sku_made_alias = 0;
-                    if ($aliasSku === null || empty($aliasSku)) {
-                        $aliasSku = [
-                            [
-                                'alias_sku' => $sku,
-                                'all_alias_identifier' => $sku
-                            ]
-                        ];
-                        $is_sku_made_alias = 1;
-                    } elseif (!is_array($aliasSku) || !isset($aliasSku[0]) || !is_array($aliasSku[0])) {
-                        $is_sku_made_alias = 1;
-                        $aliasSku = [
-                            [
-                                'alias_sku' => $this->normalizeStringValue($aliasSku),
-                                'all_alias_identifier' => $this->normalizeStringValue($aliasSku)
-                            ]
-                        ];
-                    }
+            ->addFieldToFilter('entity_id', ['gt' => (int)$lastEntityId]);
+        $product_collection->getSelect()
+            ->reset(\Magento\Framework\DB\Select::ORDER)
+            ->order('e.entity_id ASC')
+            ->limit((int)$batchSize);
 
-                    foreach ($aliasSku as $a_sku) {
-                        $alias_sku_value = $this->normalizeStringValue($a_sku['alias_sku'] ?? $a_sku);
-                        $all_alias_identifier_value = $this->normalizeStringValue($a_sku['all_alias_identifier'] ?? '');
-                        if ($alias_sku_value === '') {
-                            $alias_sku_value = $this->normalizeStringValue($sku);
-                        }
-                        if ($all_alias_identifier_value === '') {
-                            $all_alias_identifier_value = $alias_sku_value;
-                        }
-
-                        $bd_sku = trim((string) preg_replace('/[^A-Za-z0-9-]/', '_', $alias_sku_value));
-                        $get_data = $this->datahelper->getImageSyncWithProperties($bd_sku, $property_id, $collection_value);
-                        if (!empty($get_data) && $this->getIsJSON($get_data)) {
-                            $respon_array = json_decode($get_data, true);
-                            if ($respon_array['status'] == 1) {
-                                $convert_array = json_decode($respon_array['data'], true);
-                                if ($convert_array['status'] == 1) {
-                                    $current_sku = $sku;
-                                    try {
-                                        $this->getDataItem(
-                                            $convert_array,
-                                            $collection_slug_val,
-                                            $current_sku,
-                                            $alias_sku_value,
-                                            $all_alias_identifier_value
-                                        );
-                                        $this->datahelper->updateIsSync($current_sku, 1); 
-                                    } catch (Exception $e) {
-                                        $insert_data = [
-                                            "sku" => $sku,
-                                            'alias_sku' => $alias_sku_value,
-                                            "message" => $e->getMessage(),
-                                            "data_type" => "",
-                                            'media_id' => "",
-                                            'remove_for_magento' => '',
-                                            'added_on_cron_compactview' => '',
-                                            "lable" => "0"
-                                        ];
-                                        $this->getInsertDataTable($insert_data);
-                                        $this->datahelper->updateIsSync($sku, 1); 
-                                        $this->updateBynderCronSync($sku);
-                                    }
-                                } else {
-                                    $insert_data = [
-                                        "sku" => $sku,
-                                        'alias_sku' => $alias_sku_value,
-                                        "message" => $convert_array['data'],
-                                        "data_type" => "",
-                                        'media_id' => "",
-                                        'remove_for_magento' => '',
-                                        'added_on_cron_compactview' => '',
-                                        "lable" => "0"
-                                    ];
-                                    $this->getInsertDataTable($insert_data);
-                                    $this->datahelper->updateIsSync($sku, 1); 
-                                    $this->updateBynderCronSync($sku);
-                                }
-                            } else {
-                                $insert_data = [
-                                    "sku" => $sku,
-                                    'alias_sku' => $alias_sku_value,
-                                    "message" => 'Please Select The Metaproperty First.....',
-                                    "data_type" => "",
-                                    'media_id' => "",
-                                    'remove_for_magento' => '',
-                                    'added_on_cron_compactview' => '',
-                                    "lable" => "0"
-                                ];
-                                $this->getInsertDataTable($insert_data);
-                            }
-                        } else {
-                            $insert_data = [
-                                "sku" => $sku,
-                                'alias_sku' => $alias_sku_value,
-                                "message" => "Something problem in DAM side please contact to developer.",
-                                "data_type" => "",
-                                'media_id' => "",
-                                'remove_for_magento' => '',
-                                'added_on_cron_compactview' => '',
-                                "lable" => "0"
-                            ];
-                            $this->getInsertDataTable($insert_data);
-                        }
-                    }
-                    if($is_sku_made_alias == 0){
-                        $all_alias_identifier = array();
-                        $bd_sku = trim((string) preg_replace('/[^A-Za-z0-9-]/', '_', $sku));
-                        $get_data = $this->datahelper->getImageSyncWithProperties($bd_sku, $property_id, $collection_value);
-                        if (!empty($get_data) && $this->getIsJSON($get_data)) {
-                            $respon_array = json_decode($get_data, true);
-                            if ($respon_array['status'] == 1) {
-                                $convert_array = json_decode($respon_array['data'], true);
-                                if ($convert_array['status'] == 1) {
-                                    $current_sku = $sku;
-                                    try {
-                                        $this->getDataItem(
-                                            $convert_array,
-                                            $collection_slug_val,
-                                            $current_sku,
-                                            $sku,
-                                            $all_alias_identifier_value
-                                        );
-                                        $this->datahelper->updateIsSync($current_sku, 1);  
-                                    } catch (Exception $e) {
-                                        $insert_data = [
-                                            "sku" => $sku,
-                                            'alias_sku' => null,
-                                            "message" => $e->getMessage(),
-                                            "data_type" => "",
-                                            'media_id' => "",
-                                            'remove_for_magento' => '',
-                                            'added_on_cron_compactview' => '',
-                                            "lable" => "0"
-                                        ];
-                                        $this->getInsertDataTable($insert_data);
-                                        $this->datahelper->updateIsSync($sku, 1); 
-                                        $this->updateBynderCronSync($sku);
-                                    }
-                                } else {
-                                    $insert_data = [
-                                        "sku" => $sku,
-                                        'alias_sku' => null,
-                                        "message" => $convert_array['data'],
-                                        "data_type" => "",
-                                        'media_id' => "",
-                                        'remove_for_magento' => '',
-                                        'added_on_cron_compactview' => '',
-                                        "lable" => "0"
-                                    ];
-                                    $this->getInsertDataTable($insert_data);
-                                    $this->datahelper->updateIsSync($sku, 1); 
-                                    $this->updateBynderCronSync($sku);
-                                }
-                            } else {
-                                $insert_data = [
-                                    "sku" => $sku,
-                                    'alias_sku' => null,
-                                    "message" => 'Please Select The Metaproperty First.....',
-                                    "data_type" => "",
-                                    'media_id' => "",
-                                    'remove_for_magento' => '',
-                                    'added_on_cron_compactview' => '',
-                                    "lable" => "0"
-                                ];
-                                $this->getInsertDataTable($insert_data);
-                            }
-                        } else {
-                            $insert_data = [
-                                "sku" => $sku,
-                                'alias_sku' => null,
-                                "message" => "Something problem in DAM side please contact to developer.",
-                                "data_type" => "",
-                                'media_id' => "",
-                                'remove_for_magento' => '',
-                                'added_on_cron_compactview' => '',
-                                "lable" => "0"
-                            ];
-                            $this->getInsertDataTable($insert_data);
-                        }
-                    }
-                }
-            } 
-        }
-        return true;
+        return $product_collection->getData();
     }
+
+    /**
+     * Sync one product SKU (its aliases first, then the SKU itself when it has aliases).
+     *
+     * @param string $sku
+     * @param mixed $property_id
+     * @param array $collection_value
+     * @param array $collection_slug_val
+     * @return void
+     */
+    protected function processSku($sku, $property_id, $collection_value, $collection_slug_val)
+    {
+        $aliasSku = $this->datahelper->getSkuByAlias($sku);
+        $is_sku_made_alias = 0;
+        if ($aliasSku === null || empty($aliasSku)) {
+            $aliasSku = [
+                [
+                    'alias_sku' => $sku,
+                    'all_alias_identifier' => $sku
+                ]
+            ];
+            $is_sku_made_alias = 1;
+        } elseif (!is_array($aliasSku) || !isset($aliasSku[0]) || !is_array($aliasSku[0])) {
+            $is_sku_made_alias = 1;
+            $aliasSku = [
+                [
+                    'alias_sku' => $this->normalizeStringValue($aliasSku),
+                    'all_alias_identifier' => $this->normalizeStringValue($aliasSku)
+                ]
+            ];
+        }
+
+        if ($is_sku_made_alias == 0) {
+            $this->setSkuLogAliases($sku, array_map(function ($a) {
+                return is_array($a) ? ($a['alias_sku'] ?? '') : $a;
+            }, $aliasSku));
+        }
+
+        $all_alias_identifier_value = '';
+        foreach ($aliasSku as $a_sku) {
+            $alias_sku_value = $this->normalizeStringValue($a_sku['alias_sku'] ?? $a_sku);
+            $all_alias_identifier_value = $this->normalizeStringValue($a_sku['all_alias_identifier'] ?? '');
+            if ($alias_sku_value === '') {
+                $alias_sku_value = $this->normalizeStringValue($sku);
+            }
+            if ($all_alias_identifier_value === '') {
+                $all_alias_identifier_value = $alias_sku_value;
+            }
+
+            // Log the alias only when it is a real alias (not the SKU itself).
+            $this->syncFromDam(
+                $sku,
+                $alias_sku_value,
+                $is_sku_made_alias ? null : $alias_sku_value,
+                $all_alias_identifier_value,
+                $property_id,
+                $collection_value,
+                $collection_slug_val
+            );
+        }
+
+        if ($is_sku_made_alias == 0) {
+            $this->syncFromDam(
+                $sku,
+                $sku,
+                null,
+                $all_alias_identifier_value,
+                $property_id,
+                $collection_value,
+                $collection_slug_val
+            );
+        }
+
+        // Make sure the product leaves the "bynder_cron_sync IS NULL" filter
+        // even when the DAM returned no assets, so it is not picked up again.
+        $this->markCronSync($sku, 1, true);
+    }
+
+    /**
+     * Call the DAM for one lookup SKU and push the result to the product.
+     *
+     * @param string $sku               Magento product SKU
+     * @param string $lookupSku         SKU/alias sent to the DAM
+     * @param string|null $logAliasSku  alias_sku value written to the log table
+     * @param string $all_alias_identifier_value
+     * @param mixed $property_id
+     * @param array $collection_value
+     * @param array $collection_slug_val
+     * @return void
+     */
+    protected function syncFromDam(
+        $sku,
+        $lookupSku,
+        $logAliasSku,
+        $all_alias_identifier_value,
+        $property_id,
+        $collection_value,
+        $collection_slug_val
+    ) {
+        $bd_sku = trim((string) preg_replace('/[^A-Za-z0-9-]/', '_', $lookupSku));
+        $get_data = $this->datahelper->getImageSyncWithProperties($bd_sku, $property_id, $collection_value);
+
+        $insert_data = [
+            "sku" => $sku,
+            'alias_sku' => $logAliasSku,
+            "message" => "",
+            "data_type" => "",
+            'media_id' => "",
+            'remove_for_magento' => '',
+            'added_on_cron_compactview' => '',
+            "lable" => "0"
+        ];
+
+        if (empty($get_data) || !$this->getIsJSON($get_data)) {
+            $insert_data['message'] = "Something problem in DAM side please contact to developer.";
+            $this->getInsertDataTable($insert_data);
+            $this->updateBynderCronSync($sku);
+            return;
+        }
+
+        $respon_array = json_decode($get_data, true);
+        if ($respon_array['status'] != 1) {
+            $insert_data['message'] = 'Please Select The Metaproperty First.....';
+            $this->getInsertDataTable($insert_data);
+            $this->updateBynderCronSync($sku);
+            return;
+        }
+
+        $convert_array = json_decode($respon_array['data'], true);
+        if ($convert_array['status'] != 1) {
+            $insert_data['message'] = $convert_array['data'];
+            $this->getInsertDataTable($insert_data);
+            $this->datahelper->updateIsSync($sku, 1);
+            $this->updateBynderCronSync($sku);
+            return;
+        }
+
+        try {
+            $this->getDataItem(
+                $convert_array,
+                $collection_slug_val,
+                $sku,
+                $lookupSku,
+                $all_alias_identifier_value
+            );
+            $this->datahelper->updateIsSync($sku, 1);
+        } catch (Exception $e) {
+            $insert_data['message'] = $e->getMessage();
+            $this->getInsertDataTable($insert_data);
+            $this->datahelper->updateIsSync($sku, 1);
+            $this->updateBynderCronSync($sku);
+        }
+    }
+
     /**
      * Get Meta Properties Collection
      *
@@ -433,17 +507,181 @@ class FeatchNullDataToMagento
         return ((json_decode($string)) === null) ? false : true;
     }
     /**
-     * Is Json
+     * Alias SKU value for the log table: empty when the lookup was the product
+     * SKU itself (no real alias), otherwise the alias that was used.
+     *
+     * @param string $sku
+     * @param mixed $aliasSku
+     * @return string|null
+     */
+    protected function getLogAliasSku($sku, $aliasSku)
+    {
+        $alias = trim($this->normalizeStringValue($aliasSku));
+        if ($alias === '' || strcasecmp($alias, trim((string)$sku)) === 0) {
+            return null;
+        }
+        return $alias;
+    }
+    /**
+     * Collect every log entry of the SKU being synced and write ONE row per SKU.
+     *
+     * @return void
+     */
+    protected function startSkuLog($sku)
+    {
+        $this->skuLogBuffer = [
+            'sku' => (string)$sku,
+            'aliases' => [],
+            'urls' => [],
+            'media_ids' => [],
+            'data_aliases' => [],
+            'types' => [],
+            'errors' => []
+        ];
+    }
+
+    /**
+     * Remember the real aliases of the SKU (never the SKU itself).
+     *
+     * @param string $sku
+     * @param array $aliases
+     * @return void
+     */
+    protected function setSkuLogAliases($sku, array $aliases)
+    {
+        if ($this->skuLogBuffer === null) {
+            return;
+        }
+        foreach ($aliases as $alias) {
+            $alias = trim($this->normalizeStringValue($alias));
+            if ($alias !== '' && strcasecmp($alias, trim((string)$sku)) !== 0) {
+                $this->skuLogBuffer['aliases'][$alias] = $alias;
+            }
+        }
+    }
+
+    /**
+     * Add one log entry to the SKU buffer.
      *
      * @param array $insert_data
-     * @return $this
+     * @return void
+     */
+    protected function bufferSkuLog(array $insert_data)
+    {
+        $type = trim((string)($insert_data['data_type'] ?? ''));
+        $message = $insert_data['message'] ?? '';
+        if (in_array($type, ['1', '2', '3'], true)) {
+            $urls = is_string($message) ? json_decode($message, true) : $message;
+            if (!is_array($urls)) {
+                $urls = [$message];
+            }
+            foreach ($urls as $url) {
+                $url = trim($this->normalizeStringValue($url));
+                if ($url !== '') {
+                    $this->skuLogBuffer['urls'][$url] = $url;
+                }
+            }
+            foreach (explode(',', (string)($insert_data['media_id'] ?? '')) as $id) {
+                $id = trim($id);
+                if ($id !== '') {
+                    $this->skuLogBuffer['media_ids'][$id] = $id;
+                }
+            }
+            $this->skuLogBuffer['types'][$type] = $type;
+            // Remember the alias only when the data really came from an alias.
+            $entryAlias = trim($this->normalizeStringValue($insert_data['alias_sku'] ?? ''));
+            if ($entryAlias !== '' && strcasecmp($entryAlias, $this->skuLogBuffer['sku']) !== 0) {
+                $this->skuLogBuffer['data_aliases'][$entryAlias] = $entryAlias;
+            }
+        } else {
+            $msg = trim($this->normalizeStringValue($message));
+            if ($msg !== '') {
+                $this->skuLogBuffer['errors'][$msg] = $msg;
+            }
+        }
+    }
+
+    /**
+     * Write the single log row for the SKU: all URLs if anything was found,
+     * otherwise the error message(s).
+     *
+     * @return void
+     */
+    protected function flushSkuLog()
+    {
+        $buf = $this->skuLogBuffer;
+        $this->skuLogBuffer = null;
+        if ($buf === null) {
+            return;
+        }
+
+        if (!empty($buf['urls'])) {
+            // Data found: show only the alias(es) that returned it (empty if it came from the SKU itself).
+            $alias = implode(', ', $buf['data_aliases']);
+            $types = $buf['types'];
+            $type = isset($types['1']) ? '1' : (isset($types['3']) ? '3' : '2');
+            $row = [
+                'sku' => $buf['sku'],
+                'alias_sku' => $alias,
+                'message' => json_encode(array_values($buf['urls'])),
+                'data_type' => $type,
+                'media_id' => implode(',', $buf['media_ids']),
+                'remove_for_magento' => '1',
+                'added_on_cron_compactview' => '1',
+                'lable' => 1
+            ];
+        } elseif (!empty($buf['errors'])) {
+            // Nothing found: show the real aliases that were tried.
+            $alias = implode(', ', $buf['aliases']);
+            $row = [
+                'sku' => $buf['sku'],
+                'alias_sku' => $alias,
+                'message' => implode(' | ', $buf['errors']),
+                'data_type' => '',
+                'media_id' => '',
+                'remove_for_magento' => '',
+                'added_on_cron_compactview' => '',
+                'lable' => 0
+            ];
+        } else {
+            return;
+        }
+
+        try {
+            $this->writeLogRow($row);
+        } catch (\Throwable $e) {
+            $this->logger->error('Bynder cron: could not write log for ' . $buf['sku'] . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Log entry point: buffered while a SKU is being synced, written directly otherwise.
+     *
+     * @param array $insert_data
+     * @return void
      */
     public function getInsertDataTable($insert_data)
+    {
+        if ($this->skuLogBuffer !== null
+            && (string)($insert_data['sku'] ?? '') === $this->skuLogBuffer['sku']) {
+            $this->bufferSkuLog($insert_data);
+            return;
+        }
+        $this->writeLogRow($insert_data);
+    }
+
+    /**
+     * Save one row to the log table.
+     *
+     * @param array $insert_data
+     * @return void
+     */
+    protected function writeLogRow($insert_data)
     {
         $model = $this->_byndersycData->create();
         $data_image_data = [
             'sku' => $insert_data['sku'],
-            'alias_sku' => $insert_data['alias_sku'],
+            'alias_sku' => $this->getLogAliasSku($insert_data['sku'], $insert_data['alias_sku']),
             'bynder_data' =>$insert_data['message'],
             'bynder_data_type' => $insert_data['data_type'],
             'media_id' => $insert_data['media_id'],
@@ -593,8 +831,12 @@ class FeatchNullDataToMagento
                     }
 					$is_order = array_unique($is_order);
                 } else {
-                    //$new_image_role = ['Base', 'Small', 'Thumbnail', 'Swatch'];
-                    $new_magento_role_list[] = "###"."\n";
+                    // No roles from the DAM: use is_base, same as the empty-role branch above.
+                    if (!empty($data_value['is_base'])) {
+                        $new_magento_role_list = ['Base', 'Small', 'Thumbnail', 'Swatch'];
+                    } else {
+                        $new_magento_role_list[] = "###"."\n";
+                    }
                     /* this part added because sometime role not avaiable but alt text will be there*/
                     $alt_text_vl = $data_value["thumbnails"]["img_alt_text"];
                     if (!empty($alt_text_vl)) {
@@ -774,6 +1016,13 @@ class FeatchNullDataToMagento
         $model = $this->_byndersycData->create();
         $image_detail = [];
         $video_detail = [];
+        // One log row per SKU (per type) instead of one row per image.
+        $log_images = [];
+        $log_image_ids = [];
+        $log_videos = [];
+        $log_video_ids = [];
+        $log_documents = [];
+        $log_document_ids = [];
         try {
             $storeId = $this->storeManagerInterface->getStore()->getId();
             $_product = $this->_productRepository->get($product_sku_key, false, $storeId, true);
@@ -833,17 +1082,8 @@ class FeatchNullDataToMagento
 									"is_order" => $is_order,
                                     "all_alias_identifier" => $this->normalizeStringValue($byd_all_alias_identifier[$vv] ?? $byd_all_alias_identifier[0] ?? '')
                                 ];
-                                $data_image_data = [
-                                    'sku' => $product_sku_key,
-                                    'alias_sku' => $alias_key,
-                                    'message' => $image_item,
-                                    'data_type' => '1',
-                                    'media_id' => $bynder_media_id[$vv],
-                                    'remove_for_magento' => '1',
-                                    'added_on_cron_compactview' => '1',
-                                    'lable' => 1
-                                ];
-                                $this->getInsertDataTable($data_image_data);
+                                $log_images[] = $image_item;
+                                $log_image_ids[] = $bynder_media_id[$vv];
                             } elseif($find_video) {
 								$is_order = isset($isOrder[$vv]) ? $isOrder[$vv] : "";
 								$item_url = explode("@@", $image_item);
@@ -859,17 +1099,8 @@ class FeatchNullDataToMagento
 									"is_order" => $is_order,
                                     "all_alias_identifier" => $this->normalizeStringValue($byd_all_alias_identifier[$vv] ?? $byd_all_alias_identifier[0] ?? '')
                                 ];
-                                $data_video_data = [
-                                    'sku' => $product_sku_key,
-                                    'alias_sku' => $alias_key,
-                                    'message' => $item_url[0],
-                                    'data_type' => '3',
-                                    'media_id' => $media_video_explode[$vv],
-                                    'remove_for_magento' => '1',
-                                    'added_on_cron_compactview' => '1',
-                                    'lable' => 1
-                                ];
-                                $this->getInsertDataTable($data_video_data);
+                                $log_videos[] = $item_url[0];
+                                $log_video_ids[] = $bynder_media_id[$vv];
             
                             }
                             $total_new_value = count($image_detail);
@@ -888,22 +1119,44 @@ class FeatchNullDataToMagento
                             }
                         }
                     }
-                    $replacementRoles = ["Base", "Small", "Swatch", "Thumbnail"];
-					$flags = true;
-					foreach ($image_detail as &$item) {
-						if (in_array('Base', $item['image_role'])) {
-							$flags = false;
-						}
-					}
-                    foreach ($image_detail as &$item) {
-                        if ($flags && isset($item['image_role']) && is_array($item['image_role'])) {
-                            $containsPlaceholder = in_array("###\n", $item['image_role']);
-                            $hasAllReplacementRoles = empty(array_diff($replacementRoles, $item['image_role']));
-                            if ($hasAllReplacementRoles) { break; }
-                            if ($containsPlaceholder && !$hasAllReplacementRoles) {
-                                $item['image_role'] = $replacementRoles;
+                    // If the DAM did not mark any image as Base, give the roles to the
+                    // FIRST image by media order (lowest is_order), like the manual sync,
+                    // instead of the last image.
+                    $allRoles = ['Base', 'Small', 'Thumbnail', 'Swatch'];
+                    $hasBase = false;
+                    foreach ($image_detail as $chk) {
+                        if (in_array('Base', (array)$chk['image_role'], true)) {
+                            $hasBase = true;
+                            break;
+                        }
+                    }
+                    if (!$hasBase && !empty($image_detail)) {
+                        $baseIndex = null;
+                        $bestOrder = null;
+                        foreach ($image_detail as $idx => $chk) {
+                            $ord = trim((string)($chk['is_order'] ?? ''));
+                            $ord = is_numeric($ord) ? (float)$ord : PHP_INT_MAX;
+                            if ($baseIndex === null || $ord < $bestOrder) {
+                                $baseIndex = $idx;
+                                $bestOrder = $ord;
                             }
                         }
+                        // Roles already used by other images stay with them.
+                        $taken = [];
+                        foreach ($image_detail as $idx => $chk) {
+                            if ($idx !== $baseIndex) {
+                                foreach ((array)$chk['image_role'] as $r) {
+                                    $taken[trim((string)$r)] = true;
+                                }
+                            }
+                        }
+                        $roles = ['Base'];
+                        foreach ($allRoles as $r) {
+                            if ($r !== 'Base' && !isset($taken[$r])) {
+                                $roles[] = $r;
+                            }
+                        }
+                        $image_detail[$baseIndex]['image_role'] = $roles;
                     }
 					foreach ($image_detail as &$items) {
 						if (isset($items['image_role']) && is_array($items['image_role'])) {
@@ -977,6 +1230,9 @@ class FeatchNullDataToMagento
                         $updated_values,
                         $storeId
                     );
+
+                    $this->insertSkuLog($product_sku_key, $alias_key, $log_images, $log_image_ids, '1');
+                    $this->insertSkuLog($product_sku_key, $alias_key, $log_videos, $log_video_ids, '3');
                 }
             }
             if (in_array("document", $types)) {
@@ -1000,17 +1256,8 @@ class FeatchNullDataToMagento
 									"all_alias_identifier" => $this->normalizeStringValue($byd_all_alias_identifier[$vv] ?? $byd_all_alias_identifier[0] ?? '')
 								];
 							
-								$data_doc_value = [
-									'sku' => $product_sku_key,
-                                    'alias_sku' => "",
-									'message' => $item_url[0],
-									'data_type' => '2',
-									'media_id' => $bynder_media_id[$vv],
-									'remove_for_magento' => '1',
-									'added_on_cron_compactview' => '1',
-									'lable' => 1
-								];
-								$this->getInsertDataTable($data_doc_value);
+								$log_documents[] = $item_url[0];
+								$log_document_ids[] = $bynder_media_id[$vv];
 							}
 						}   
                     }
@@ -1020,6 +1267,7 @@ class FeatchNullDataToMagento
                         ['bynder_document' => $new_value_array,'bynder_cron_sync' => 1],
                         $storeId
                     );
+                    $this->insertSkuLog($product_sku_key, "", $log_documents, $log_document_ids, '2');
                 }
             }
         } catch (Exception $e) {
@@ -1037,6 +1285,33 @@ class FeatchNullDataToMagento
         }
     }
     /**
+     * Write one success log row for a SKU holding all its URLs of one type.
+     *
+     * @param string $sku
+     * @param string|null $aliasSku
+     * @param array $urls
+     * @param array $mediaIds
+     * @param string $dataType  1 = image, 2 = document, 3 = video
+     * @return void
+     */
+    protected function insertSkuLog($sku, $aliasSku, array $urls, array $mediaIds, $dataType)
+    {
+        if (empty($urls)) {
+            return;
+        }
+        $this->getInsertDataTable([
+            'sku' => $sku,
+            'alias_sku' => $aliasSku,
+            'message' => json_encode(array_values(array_map('trim', $urls))),
+            'data_type' => $dataType,
+            'media_id' => implode(',', array_unique(array_map('trim', $mediaIds))),
+            'remove_for_magento' => '1',
+            'added_on_cron_compactview' => '1',
+            'lable' => 1
+        ]);
+    }
+
+    /**
      * Cache the latest attribute value for the current request.
      *
      * @param \Magento\Catalog\Model\Product $product
@@ -1053,25 +1328,41 @@ class FeatchNullDataToMagento
         $cacheKey = $product->getId() . ':' . $attributeCode;
         $this->attributeDataCache[$cacheKey] = is_array($value) ? $value : [];
     }
+
     /**
-     * Update Bynder cron sync status
+     * Set bynder_cron_sync on a product.
+     *
+     * @param string $sku
+     * @param int $value
+     * @param bool $onlyIfEmpty  do not overwrite an existing value (e.g. a 2 = failed flag)
+     * @return void
+     */
+    protected function markCronSync($sku, $value, $onlyIfEmpty = false)
+    {
+        try {
+            $storeId = $this->getMyStoreId();
+            $_product = $this->_productRepository->get($sku, false, $storeId, true);
+            if ($onlyIfEmpty && $_product->getData('bynder_cron_sync') !== null
+                && $_product->getData('bynder_cron_sync') !== '') {
+                return;
+            }
+            $this->action->updateAttributes(
+                [$_product->getId()],
+                ['bynder_cron_sync' => $value],
+                $storeId
+            );
+        } catch (\Throwable $e) {
+            $this->logger->error('Bynder fetch cron: could not set bynder_cron_sync for ' . $sku . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update Bynder cron sync status (2 = failed, will not be picked up again)
      *
      * @param string $sku
      */
     public function updateBynderCronSync($sku)
     {
-        $updated_values = [
-            'bynder_cron_sync' => 2
-        ];
-
-        $storeId = $this->getMyStoreId();
-        $_product = $this->_productRepository->get($sku);
-        $product_ids = $_product->getId();
-
-        $this->action->updateAttributes(
-            [$product_ids],
-            $updated_values,
-            $storeId
-        );
+        $this->markCronSync($sku, 2);
     }
 }
