@@ -8,7 +8,7 @@
             "email": "sean@thedamconsultants.com"
         }
     ],
-    "version": "1.0.17",
+    "version": "1.0.18",
     "license": "MIT",
     "autoload": {
         "psr-4": {
@@ -23,10 +23,10 @@
         "composer": "^2.2"
     },
     "repositories": [
-    {
-        "type": "vcs",
-        "url": "https://github.com/damconsultants/ahfproducts.git"
-    }
-]
+        {
+            "type": "vcs",
+            "url": "https://github.com/damconsultants/ahfproducts.git"
+        }
+    ]
     
 }
